@@ -4,7 +4,6 @@
 #include "pyro_dr16_rc_drv.h"
 #include "pyro_dwt_drv.h"
 #include "pyro_image_drv.h"
-#include "pyro_ins.h"
 #include "pyro_supercap_drv.h"
 #include "pyro_referee.h"
 #include "pyro_sr04_drv.h"
@@ -15,9 +14,6 @@ namespace pyro
 {
 extern "C"
 {
-    ins_drv_t *ins_drv;
-    
-
     void pyro_init_thread(void *argument)
     {
         dwt_drv_t::init(480); // Initialize DWT at 480 MHz

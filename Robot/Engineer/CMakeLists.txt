@@ -8,7 +8,8 @@ set(BOARD "ARM_BOARD")
 # =========================================================================
 # 2. 声明 Engineer 目标文件库（OBJECT库，仅编译目标文件不链接）
 # =========================================================================
-add_library(Engineer OBJECT)
+add_library(Engineer OBJECT
+)
 
 # 将 CMake 变量的值作为宏传递给 C/C++ 编译器代码
 target_compile_definitions(Engineer PRIVATE
@@ -31,9 +32,12 @@ set(BASE_SOURCES
 set(ARM_EXTRA_SOURCES
         Arm/pyro_mission_planer.cpp
         Arm/pyro_init_thread.cpp
-        Arm/arm_control_execute.cpp
-        Arm/arm_app.cpp
-        Arm/arm_fsm.cpp
+        Arm/fsm/arm_fsm.cpp
+        Arm/fsm/arm_self_ctrl_state.cpp
+        Arm/fsm/arm_idle_state.cpp
+        Arm/fsm/arm_normal_state.cpp
+        Arm/arm_module.cpp
+        Application/arm_app.cpp
 )
 
 # ===================== CHASSIS_BOARD 扩展源文件 =====================

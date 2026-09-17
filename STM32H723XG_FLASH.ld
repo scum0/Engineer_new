@@ -267,6 +267,20 @@ SECTIONS
     . = ALIGN(4);
   } >RAM_D2
 
+  .ram_d1_static : ALIGN(8)
+  {
+      . = ALIGN(8);
+      KEEP(*(.ram_d1_static))
+      . = ALIGN(8);
+  } > RAM_D1
+
+  /* RAM_D1 动态堆内存池 */
+  .ram_d1_heap : ALIGN(8)
+  {
+      . = ALIGN(8);
+      KEEP(*(.ram_d1_heap))
+      . = ALIGN(8);
+  } > RAM_D1
 
   /* Remove information from the standard libraries */
   /DISCARD/ :
