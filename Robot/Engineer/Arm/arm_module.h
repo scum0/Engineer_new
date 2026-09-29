@@ -10,17 +10,18 @@
 namespace pyro
 {
 
-constexpr uint8_t JOINT_NUM = 7;
-constexpr uint8_t COEFF_NUM = 4;
+inline constexpr uint8_t AXIS_NUM = 6;
+inline constexpr uint8_t COEFF_NUM = 4;
 
-using position_t = std::array<float, JOINT_NUM>;
+using position_t = std::array<float, AXIS_NUM>;
 
 struct arm_cmd_t final : public cmd_base_t
 {
+    // 夹爪只有两种状态，由按键控制开合
     struct segment_t
     {
         float duration;                          //持续时长,单位:秒
-        std::array<position_t,COEFF_NUM> coeff;            //[关节][a, b, c, d]
+        std::array<std::array<float,COEFF_NUM>,AXIS_NUM> coeff;  //[关节][a, b, c, d]
 
         float start_Tick;
         bool is_initialized;
@@ -28,10 +29,6 @@ struct arm_cmd_t final : public cmd_base_t
         static segment_t make_default()
         {
             segment_t s{};
-            s.coeff[0].fill(1.0f);
-            s.coeff[1].fill(0.0f);
-            s.coeff[2].fill(0.0f);
-            s.coeff[3].fill(0.0f);
             s.is_initialized = false;
             s.duration = 0.0f;
             s.start_Tick = 0.0f;
@@ -41,12 +38,13 @@ struct arm_cmd_t final : public cmd_base_t
         void tick_init()
         {
             start_Tick = dwt_drv_t::get_timeline_ms();
+            is_initialized = true;
         }
 
         [[nodiscard]] bool is_timeout()
         {
             float current_Tick = dwt_drv_t::get_timeline_ms();
-            return current_Tick - start_Tick >= duration;
+            return (current_Tick - start_Tick)/1000.0f >= duration;
         }
 
         void output_val(float* out_val) const
@@ -55,7 +53,7 @@ struct arm_cmd_t final : public cmd_base_t
             dt1 = std::fmin(dt1,duration);
             float dt2 = dt1 * dt1;
             float dt3 = dt2 * dt1;
-            for (size_t j = 0; j < JOINT_NUM; ++j)
+            for (size_t j = 0; j < AXIS_NUM; ++j)
             {
                 const auto& row = coeff[j];
                 out_val[j] = row[0] + row[1]*dt1 + row[2]*dt2 + row[3]*dt3;
@@ -92,30 +90,41 @@ struct arm_deps_t
         float _pos_offset;
     };
 
-    std::array<dm_motor_drv_t*,JOINT_NUM> motor{nullptr};
-    std::array<pid_t*,JOINT_NUM> pos_pid{nullptr};
-    std::array<pid_t*,JOINT_NUM> rot_pid{nullptr};
-    std::array<axis_deps_t*,JOINT_NUM> axis{nullptr};};
+    std::array<dm_motor_drv_t*,AXIS_NUM> motor{nullptr};
+    std::array<pid_t*,AXIS_NUM> pos_pid{nullptr};
+    std::array<pid_t*,AXIS_NUM> rot_pid{nullptr};
+    std::array<axis_deps_t*,AXIS_NUM> axis{nullptr};
+
+    dm_motor_drv_t*  end_motor{nullptr};
+    pid_t*  end_pos_pid{nullptr};
+    pid_t*  end_rot_pid{nullptr};
+    axis_deps_t* end_gripper{nullptr};
+};
 
 struct data_ctx_t
 {
-    std::array<float,JOINT_NUM> feedback_pos;        // 含offset
-    std::array<float,JOINT_NUM> feedback_rot;
-    std::array<float,JOINT_NUM> target_pos;
-    std::array<float,JOINT_NUM> out_torque;
+    std::array<float,AXIS_NUM> axis_feedback_pos;        // 含offset
+    std::array<float,AXIS_NUM> axis_feedback_rot;
+    std::array<float,AXIS_NUM> axis_target_pos;
+
+    float gripper_feedback_pos;
+    float gripper_feedback_rot;
+    float gripper_target_pos;
+
+    bool gripper_state = false;     //夹爪开为1，闭为0
 };
 
 struct arm_ctx_t
 {
-    std::array<dm_motor_drv_t*,JOINT_NUM> motor{nullptr};
-    std::array<pid_t*,JOINT_NUM> pos_pid{nullptr};
-    std::array<pid_t*,JOINT_NUM> rot_pid{nullptr};
+    std::array<arm_deps_t::axis_deps_t*,AXIS_NUM> axis{nullptr};
+    arm_deps_t::axis_deps_t* end_gripper{nullptr};
 
-    std::array<arm_deps_t::axis_deps_t*,JOINT_NUM> axis{nullptr};
     data_ctx_t data;
     arm_cmd_t *cmd{nullptr};
 
     bool is_cmd_empty = true;
+    bool is_buffer_empty = true;
+    bool is_idle_state= true;  
 };
 
 struct arm_module_params_t
@@ -130,12 +139,14 @@ class arm_module_t final
 {
     friend class module_base_t;
 public:
-    [[nodiscard]] const arm_ctx_t& get_ctx();
     void _arm_disable();
     void _arm_enable();
     void _clear_pid();
+    void _turn_gripper_state();
+
     position_t _get_current_pos();
     [[nodiscard]] bool _is_empty();
+    void _set_idle_state(bool is_idle){_ctx.is_idle_state = is_idle;}
 private:
     arm_module_t();
     ~arm_module_t() override = default;
@@ -145,9 +156,7 @@ private:
     void _update_feedback() override;
     void _fsm_execute() override;
 
-    // 私有辅助方法
-    void _pid_calculation();
-    void _send_motor_command();
+    void _pid_control();
 };
 
 };

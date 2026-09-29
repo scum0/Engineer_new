@@ -1,8 +1,8 @@
 #include "arm_module.h"
 #include "pyro_rc_base_drv.h"
-#include "fsm/arm_fsm.h"
+#include "arm_fsm.h"
 #include "pyro_rc_core.h"
-
+#include "task.h"
 namespace pyro
 {
 
@@ -16,11 +16,13 @@ arm_deps_t *arm_deps = nullptr;
 fsm_ctx_t *fsm_ctx_ptr = nullptr;
 
 constexpr uint32_t EVENT_BIT_RESET                = (1 << 0);
-constexpr uint32_t EVENT_BIT_SELF_CTRL            = (1 << 1);
+constexpr uint32_t EVENT_BIT_NORMAL               = (1 << 1);
+constexpr uint32_t EVENT_BIT_SELF_CTRL            = (1 << 2);
+constexpr uint32_t EVENT_BIT_TURN_GRIPPER         = (1 << 3);
 
 void deps_init();
 
-void hero_gimbal_thread(void *argument)
+void arm_rc_thread(void *argument)
 {
     for (;;)
     {
@@ -35,6 +37,15 @@ void hero_gimbal_thread(void *argument)
 
             main_fsm.change_state(&main_fsm.idle_state);
         }
+        // 检测按键 B 触发
+        if (notify_val & EVENT_BIT_NORMAL)
+        {
+            if (eTaskGetState(fsm_task_handle) == eSuspended)
+                vTaskResume(fsm_task_handle);
+
+            main_fsm.change_state(&main_fsm.normal_state);
+        }
+        // 检测按键 X 触发
         if (notify_val & EVENT_BIT_SELF_CTRL)
         {
             if (eTaskGetState(fsm_task_handle) == eSuspended)
@@ -42,6 +53,12 @@ void hero_gimbal_thread(void *argument)
             
             main_fsm.change_state(&main_fsm.self_ctrl_state);
         }
+        // 检测按键 Shift 触发
+        if (notify_val & EVENT_BIT_TURN_GRIPPER)
+        {
+            arm_module_ptr->_turn_gripper_state();
+        }
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
 
@@ -65,13 +82,19 @@ extern "C" void arm_init()
     arm_module_ptr->configure(*arm_deps);
 
     auto &vrc = pyro::rc_drv_t::read();
+
+    arm_module_ptr->start();
+    xTaskCreate(arm_rc_thread,"arm_rc_thread",256,nullptr,
+                configMAX_PRIORITIES - 2, &arm_task_handle);
+
     pyro::btn_broker::subscribe(&vrc.keys.r, pyro::btn_event_t::PRESS_DOWN,
                                     arm_task_handle, EVENT_BIT_RESET);
+    pyro::btn_broker::subscribe(&vrc.keys.b, pyro::btn_event_t::PRESS_DOWN,
+                                arm_task_handle, EVENT_BIT_NORMAL);
     pyro::btn_broker::subscribe(&vrc.keys.x, pyro::btn_event_t::PRESS_DOWN,
                                 arm_task_handle, EVENT_BIT_SELF_CTRL);
-
-    vTaskDelay(1500);
-    arm_module_ptr->start();
+    pyro::btn_broker::subscribe(&vrc.keys.shift, pyro::btn_event_t::PRESS_DOWN,
+                                arm_task_handle, EVENT_BIT_TURN_GRIPPER);
 
     vTaskDelete(nullptr);
 }
@@ -84,7 +107,7 @@ extern "C" void fsm_init()
     main_fsm.change_state(&main_fsm.idle_state);
 
     xTaskCreate(fsm_thread,"fsm_thread_start",512,nullptr,
-                configMAX_PRIORITIES - 2, &fsm_task_handle);
+                configMAX_PRIORITIES - 1, &fsm_task_handle);
 
     vTaskDelete(nullptr);
 }
@@ -98,7 +121,7 @@ void deps_init()
     arm_deps->motor[3] = new dm_motor_drv_t(0x8, 0x7, bsp_can::can3);
     arm_deps->motor[4] = new dm_motor_drv_t(0xa, 0x9, bsp_can::can2);
     arm_deps->motor[5] = new dm_motor_drv_t(0xc, 0xb, bsp_can::can2);
-    arm_deps->motor[6] = new dm_motor_drv_t(0xe, 0xd, bsp_can::can2);
+    arm_deps->end_motor = new dm_motor_drv_t(0xe, 0xd, bsp_can::can2);
 
 
     arm_deps->motor[0]->set_position_range(-PI,PI);
@@ -125,12 +148,12 @@ void deps_init()
     arm_deps->motor[5]->set_rotate_range(-200,200);
     arm_deps->motor[5]->set_torque_range(-7,7);
 
-    arm_deps->motor[6]->set_position_range(-PI,PI);
-    arm_deps->motor[6]->set_rotate_range(-200,200);
-    arm_deps->motor[6]->set_torque_range(-7,7);
+    arm_deps->end_motor->set_position_range(-PI,PI);
+    arm_deps->end_motor->set_rotate_range(-200,200);
+    arm_deps->end_motor->set_torque_range(-7,7);
 
 
-    arm_deps->pos_pid[0] = new pid_t(0,0.0,0.0,0.0,52);
+    arm_deps->pos_pid[0] = new pid_t(10,0.0,0.0,0.0,52);
     arm_deps->rot_pid[0] = new pid_t(8.8,12.0,0.0,0.0,27);
 
     arm_deps->pos_pid[1] = new pid_t(20,0,0.0,20.0,150);
@@ -148,8 +171,8 @@ void deps_init()
     arm_deps->pos_pid[5] = new pid_t(9,0.0,0.0,0.0,200);
     arm_deps->rot_pid[5] = new pid_t(0.8,0.1,0.0,1,7);
 
-    arm_deps->pos_pid[6] = new pid_t(9,0.0,0.0,0,200);
-    arm_deps->rot_pid[6] = new pid_t(0.8,0.0,0.0,0,7);
+    arm_deps->end_pos_pid = new pid_t(9,0.0,0.0,0,200);
+    arm_deps->end_rot_pid = new pid_t(0.8,0.0,0.0,0,7);
 
 
     arm_deps->axis[0] = new arm_deps_t::axis_deps_t(arm_deps->motor[0], arm_deps->pos_pid[0],arm_deps->rot_pid[0]);
@@ -158,7 +181,7 @@ void deps_init()
     arm_deps->axis[3] = new arm_deps_t::axis_deps_t(arm_deps->motor[3], arm_deps->pos_pid[3],arm_deps->rot_pid[3]);
     arm_deps->axis[4] = new arm_deps_t::axis_deps_t(arm_deps->motor[4], arm_deps->pos_pid[4],arm_deps->rot_pid[4]);
     arm_deps->axis[5] = new arm_deps_t::axis_deps_t(arm_deps->motor[5], arm_deps->pos_pid[5],arm_deps->rot_pid[5]);
-    arm_deps->axis[6] = new arm_deps_t::axis_deps_t(arm_deps->motor[6], arm_deps->pos_pid[6],arm_deps->rot_pid[6]);
+    arm_deps->end_gripper = new arm_deps_t::axis_deps_t(arm_deps->end_motor, arm_deps->end_pos_pid, arm_deps->end_rot_pid);
 
     arm_deps->axis[0]->enable_constraint();
     arm_deps->axis[1]->enable_constraint();
@@ -166,7 +189,7 @@ void deps_init()
     arm_deps->axis[3]->disable_constraint();    // R4 无限位关节
     arm_deps->axis[4]->enable_constraint();
     arm_deps->axis[5]->enable_constraint();
-    arm_deps->axis[6]->enable_constraint();
+    arm_deps->end_gripper->enable_constraint();
 
     arm_deps->axis[0]->set_limit(-2.1599f, PI);
     arm_deps->axis[1]->set_limit(-0.3f, 1.0f);
@@ -174,15 +197,15 @@ void deps_init()
     arm_deps->axis[3]->set_limit(-0.0f, 0.0f);
     arm_deps->axis[4]->set_limit(-0.5f*PI, 0.5f*PI);
     arm_deps->axis[5]->set_limit(-0.5f*PI, 0.5f*PI);
-    arm_deps->axis[6]->set_limit(-PI, 0.0f);
+    arm_deps->end_gripper->set_limit(-2.0f, 0.0f);
 
-    arm_deps->axis[0]->set_feedback_pos_offset(0.65045f);
+    arm_deps->axis[0]->set_feedback_pos_offset(-1.9206f);
     arm_deps->axis[1]->set_feedback_pos_offset(-2.3948f);
     arm_deps->axis[2]->set_feedback_pos_offset(-0.328f);
     arm_deps->axis[3]->set_feedback_pos_offset(2.34739f);
     arm_deps->axis[4]->set_feedback_pos_offset(2.46375f);
     arm_deps->axis[5]->set_feedback_pos_offset(2.74246f);
-    arm_deps->axis[6]->set_feedback_pos_offset(1.8587f);
+    arm_deps->end_gripper->set_feedback_pos_offset(1.8587f);
 }
 
 }

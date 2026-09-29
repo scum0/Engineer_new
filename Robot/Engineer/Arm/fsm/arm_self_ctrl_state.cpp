@@ -9,6 +9,8 @@
 
 using namespace pyro;
 
+constexpr float transition_duration = 1.0f;
+
 typedef struct  __attribute__((packed))
 {
     frame_header_t header;
@@ -27,10 +29,11 @@ referee_datalink_frame_t self_control_frame;
 QueueSetHandle_t self_control_queue;
 static uint8_t self_control_buf[128];
 
-static constexpr float alpha = 0.02;
-static constexpr uint8_t AXIS_NUM = 6;
+static constexpr float alpha = 0.05f;
 
-bool self_control_callback(uint8_t *buf, uint16_t len,BaseType_t xHigherPriorityTaskWoken)
+float self_control_command_buf[AXIS_NUM] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+
+static bool self_control_callback(uint8_t *buf, uint16_t len,BaseType_t xHigherPriorityTaskWoken)
 {
     if( len == sizeof(referee_datalink_frame_t) )
     {
@@ -48,10 +51,10 @@ public:
     ~self_control_command_t();
     void update();
     float* get_self_control_command();
-private:
-    std::array<float,AXIS_NUM> _origin_command{};
-    std::array<float,AXIS_NUM> _filter_command{};
 
+private:
+    position_t _origin_command{};
+    position_t _filter_command{};
 };
 
 self_control_command_t::self_control_command_t(){};
@@ -60,11 +63,12 @@ self_control_command_t::~self_control_command_t(){};
 void self_control_command_t::update()
 {
     memcpy(&self_control_frame, self_control_buf, sizeof(referee_datalink_frame_t));
-    memcpy(_origin_command.data(),&self_control_frame.data[0],sizeof(float)*6);
+    memcpy(_origin_command.data(),&self_control_frame.data[0],sizeof(position_t));
 
     for (int i = 0; i < 6; i++)
     {
         _filter_command[i] = _filter_command[i]*(1-alpha) + _origin_command[i]*alpha;
+        self_control_command_buf[i] = _filter_command[i];
     }
 }
 
@@ -78,6 +82,8 @@ float* self_control_command_t::get_self_control_command()
 void arm_top_fsm_t::self_ctrl_state_t::enter(owner *owner)
 {
     owner->is_self_ctrl = true;
+    owner->set_next_pos(self_control_command.get_self_control_command());
+    owner->ptp_transition(transition_duration);
 }
 
 void arm_top_fsm_t::self_ctrl_state_t::execute(owner *owner)

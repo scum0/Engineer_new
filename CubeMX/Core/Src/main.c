@@ -21,6 +21,7 @@
 #include "cmsis_os.h"
 #include "dma.h"
 #include "fdcan.h"
+#include "octospi.h"
 #include "spi.h"
 #include "tim.h"
 #include "usart.h"
@@ -138,6 +139,7 @@ int main(void)
   MX_UART5_Init();
   MX_TIM3_Init();
   MX_TIM1_Init();
+  MX_OCTOSPI1_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */

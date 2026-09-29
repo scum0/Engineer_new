@@ -12,24 +12,25 @@ namespace pyro
 extern arm_module_t *arm_module_ptr;
 
 // 标签分发，不用实现
-struct reset{};
+struct resets{};
 struct normal{};
 
-using position_t = std::array<float, JOINT_NUM>;
+using position_t = std::array<float, AXIS_NUM>;
+using axis_pos_t = std::array<float, 6>;
 struct motion_param_t
 {
     float duration{};
     position_t target_pos{};
 };
 
-constexpr position_t normal_position = {};
-constexpr position_t reset_position = {};
+inline constexpr position_t normal_position = {0.0f, 0.668f, 0.827f, 0.0f, 0.1241f, -0.094f};
+inline constexpr position_t reset_position = {0.0f, 1.0905f, 1.523f, -0.018f, 0.2144f, 0.06f};
 
 template<typename Tag>
 struct motion_transition;
 
 template<>
-struct motion_transition<reset>
+struct motion_transition<resets>
 {
     static constexpr motion_param_t get()   {return{2.0f,reset_position};}
 };
@@ -37,7 +38,7 @@ struct motion_transition<reset>
 template<>
 struct motion_transition<normal>
 {
-    static constexpr motion_param_t get()   {return{2.0f,normal_position};}
+    static constexpr motion_param_t get()   {return{1.0f,normal_position};}
 };
 
 
@@ -51,10 +52,16 @@ public:
         constexpr auto param = motion_transition<TagT>::get();
 
         segment_set_ptp(param.duration, current_position, param.target_pos);
+        set_command();
     }
 
+    void ptp_transition(float duration);
+
+    void set_command();
     void set_command(arm_cmd_t::segment_t* cmd);
     void set_command(float* pos);
+
+    void set_next_pos(float* pos){memcpy(_next_pos.data(), pos, sizeof(position_t));}
 
     bool is_self_ctrl = false;
     bool is_action = false;
@@ -64,8 +71,7 @@ private:
     arm_cmd_t::segment_t _cmd = arm_cmd_t::segment_t::make_default();
     position_t _next_pos{};
 
-    int segment_set_ptp(float duration, const position_t &start_position,
-                               const position_t &end_position, uint8_t step_mask = 1u<<(JOINT_NUM - 1));
+    int segment_set_ptp(float duration, const position_t &start_position,const position_t &end_position);
 
 };
 

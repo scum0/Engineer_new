@@ -10,12 +10,10 @@ extern "C"
     {
         xTaskCreate(pyro_init_thread, "pyro_thread_start", 512,
         nullptr, configMAX_PRIORITIES - 1, nullptr);
-        vTaskDelay(10);
+        vTaskDelay(1500);
 
         xTaskCreate(arm_init, "arm_thread_start", 512,
         nullptr, configMAX_PRIORITIES - 1, nullptr);
-        vTaskDelay(20);
-
         xTaskCreate(fsm_init, "fsm_thread_start", 512,
         nullptr, configMAX_PRIORITIES - 1, nullptr);
         vTaskDelay(20);

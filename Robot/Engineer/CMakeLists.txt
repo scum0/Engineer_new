@@ -56,8 +56,8 @@ if (BOARD STREQUAL "ARM_BOARD")
     # 为 Engineer 自身添加宏定义
     target_compile_definitions(Engineer PRIVATE
             DR16_UART=PYRO_UART5
-            SELF_CTRL_UART=PYRO_UART10
-            DEBUG_UART=PYRO_UART1
+            SELF_CTRL_UART=PYRO_UART1
+            DEBUG_UART=PYRO_UART10
             INTERBOARD_UART=PYRO_UART7
     )
 
@@ -76,7 +76,7 @@ target_include_directories(Engineer
         PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/Arm
-        ${CMAKE_CURRENT_SOURCE_DIR}/Arm/Kinematics
+        ${CMAKE_CURRENT_SOURCE_DIR}/Arm/fsm
 )
 
 # ===================== 链接依赖库 =====================
