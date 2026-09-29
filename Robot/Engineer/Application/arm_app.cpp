@@ -20,7 +20,7 @@ constexpr uint32_t EVENT_BIT_SELF_CTRL            = (1 << 1);
 
 void deps_init();
 
-void hero_gimbal_thread(void *argument)
+void arm_rc_thread(void *argument)
 {
     for (;;)
     {
@@ -72,6 +72,8 @@ extern "C" void arm_init()
 
     vTaskDelay(1500);
     arm_module_ptr->start();
+    xTaskCreate(arm_rc_thread,"arm_rc_thread",512,nullptr,
+                configMAX_PRIORITIES - 2, &arm_task_handle);
 
     vTaskDelete(nullptr);
 }
