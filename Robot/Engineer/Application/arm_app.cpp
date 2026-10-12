@@ -93,16 +93,8 @@ extern "C" void arm_init()
                                 arm_task_handle, EVENT_BIT_NORMAL);
     pyro::btn_broker::subscribe(&vrc.keys.x, pyro::btn_event_t::PRESS_DOWN,
                                 arm_task_handle, EVENT_BIT_SELF_CTRL);
-<<<<<<< HEAD
     pyro::btn_broker::subscribe(&vrc.keys.shift, pyro::btn_event_t::PRESS_DOWN,
                                 arm_task_handle, EVENT_BIT_TURN_GRIPPER);
-=======
-
-    vTaskDelay(1500);
-    arm_module_ptr->start();
-    xTaskCreate(arm_rc_thread,"arm_rc_thread",512,nullptr,
-                configMAX_PRIORITIES - 2, &arm_task_handle);
->>>>>>> f3505c503361dcb95b26e97b691086e494be5188
 
     vTaskDelete(nullptr);
 }
