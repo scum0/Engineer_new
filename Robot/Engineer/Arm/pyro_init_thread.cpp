@@ -1,3 +1,5 @@
+#include "pyro_init_thread.h"
+
 #include "pyro_bsp_uart.h"
 #include "pyro_bsp_can.h"
 #include "pyro_can_drv.h"
@@ -10,98 +12,112 @@
 #include "pyro_sr05_drv.h"
 #include "pyro_us100_drv.h"
 #include "pyro_vt03_rc_drv.h"
+
 namespace pyro
 {
-extern "C"
+
+pyro_init_task_t::pyro_init_task_t()
+    : task_base_t("pyro_init_task", 512, 512, priority_t::REALTIME)
 {
-    void pyro_init_thread(void *argument)
-    {
-        dwt_drv_t::init(480); // Initialize DWT at 480 MHz
+}
 
-        // ========== 新库：通过 bsp_can 初始化 CAN ==========
-        bsp_can::get_can1().init();
-        bsp_can::get_can2().init();
-        bsp_can::get_can3().init();
-        bsp_can::get_can1().start();
-        bsp_can::get_can2().start();
-        bsp_can::get_can3().start();
+status_t pyro_init_task_t::init()
+{
+    return PYRO_OK;
+}
 
-        pyro::bsp_uart::init_all();
-        
+void pyro_init_task_t::run_loop()
+{
+    dwt_drv_t::init(480); // Initialize DWT at 480 MHz
+
+    // ========== 新库：通过 bsp_can 初始化 CAN ==========
+    bsp_can::get_can1().init();
+    bsp_can::get_can2().init();
+    bsp_can::get_can3().init();
+    bsp_can::get_can1().start();
+    bsp_can::get_can2().start();
+    bsp_can::get_can3().start();
+
+    pyro::bsp_uart::init_all();
+
 #ifdef DR16_UART
-        dr16_drv_t::instance().start();
-        dr16_drv_t::instance().enable();
-        DR16_UART.reset(100000, UART_WORDLENGTH_9B, UART_STOPBITS_2,
-                        UART_PARITY_EVEN);
-        DR16_UART.enable_rx_dma();
+    dr16_drv_t::instance().start();
+    dr16_drv_t::instance().enable();
+    DR16_UART.reset(100000, UART_WORDLENGTH_9B, UART_STOPBITS_2,
+                    UART_PARITY_EVEN);
+    DR16_UART.enable_rx_dma();
 #endif
 
 #ifdef VT03_UART
-        vt03_drv_t::instance().start();
-        vt03_drv_t::instance().enable();
-        VT03_UART.reset(921600, UART_WORDLENGTH_8B, UART_STOPBITS_1,
-                        UART_PARITY_NONE);
-        VT03_UART.enable_rx_dma();
-        rc_drv_t::init_virtual_rc();
+    vt03_drv_t::instance().start();
+    vt03_drv_t::instance().enable();
+    VT03_UART.reset(921600, UART_WORDLENGTH_8B, UART_STOPBITS_1,
+                    UART_PARITY_NONE);
+    VT03_UART.enable_rx_dma();
+    rc_drv_t::init_virtual_rc();
 #endif
 
 #ifdef REFEREE_UART
-        REFEREE_UART.reset(115200, UART_WORDLENGTH_8B, UART_STOPBITS_1,
-                           UART_PARITY_NONE);
-        REFEREE_UART.enable_rx_dma();
-        referee_drv_t::get_instance()->init();
+    REFEREE_UART.reset(115200, UART_WORDLENGTH_8B, UART_STOPBITS_1,
+                       UART_PARITY_NONE);
+    REFEREE_UART.enable_rx_dma();
+    referee_drv_t::get_instance()->init();
 #endif
 
 #ifdef SUPERCAP_UART
-        SUPERCAP_UART.reset(115200, UART_WORDLENGTH_8B, UART_STOPBITS_1,
-                            UART_PARITY_NONE);
-        SUPERCAP_UART.enable_rx_dma();
-        supercap_drv_t::get_instance()->start_rx();
+    SUPERCAP_UART.reset(115200, UART_WORDLENGTH_8B, UART_STOPBITS_1,
+                        UART_PARITY_NONE);
+    SUPERCAP_UART.enable_rx_dma();
+    supercap_drv_t::get_instance()->start_rx();
 #endif
 
 #ifdef AUTOAIM_UART
-        AUTOAIM_UART.reset(921600, UART_WORDLENGTH_8B, UART_STOPBITS_1,
-                           UART_PARITY_NONE);
-        AUTOAIM_UART.enable_rx_dma();
+    AUTOAIM_UART.reset(921600, UART_WORDLENGTH_8B, UART_STOPBITS_1,
+                       UART_PARITY_NONE);
+    AUTOAIM_UART.enable_rx_dma();
 #endif
 
 #ifdef IMAGE_UART
-        IMAGE_UART.reset(921600, UART_WORDLENGTH_8B, UART_STOPBITS_1,
-                         UART_PARITY_NONE);
-        image_drv_t::get_instance().start();
-        image_drv_t::get_instance().init();
+    IMAGE_UART.reset(921600, UART_WORDLENGTH_8B, UART_STOPBITS_1,
+                     UART_PARITY_NONE);
+    image_drv_t::get_instance().start();
+    image_drv_t::get_instance().init();
 #endif
 
 #ifdef CUSTOM_UART
-        CUSTOM_UART.reset(921600, UART_WORDLENGTH_8B, UART_STOPBITS_1,
-                          UART_PARITY_NONE);
+    CUSTOM_UART.reset(921600, UART_WORDLENGTH_8B, UART_STOPBITS_1,
+                      UART_PARITY_NONE);
 #endif
 
 #ifdef SR04_UART
-        SR04_UART.reset(9600, UART_WORDLENGTH_8B, UART_STOPBITS_1,
-                        UART_PARITY_NONE);
-        SR04_UART.enable_rx_dma();
-        sr04_drv::get_instance().init();
-        sr04_drv::get_instance().start();
+    SR04_UART.reset(9600, UART_WORDLENGTH_8B, UART_STOPBITS_1,
+                    UART_PARITY_NONE);
+    SR04_UART.enable_rx_dma();
+    sr04_drv::get_instance().init();
+    sr04_drv::get_instance().start();
 #endif
 
 #ifdef US100_UART
-        US100_UART.reset(9600, UART_WORDLENGTH_8B, UART_STOPBITS_1,
-                         UART_PARITY_NONE);
-        us100_drv::get_instance().init();
-        us100_drv::get_instance().start();
+    US100_UART.reset(9600, UART_WORDLENGTH_8B, UART_STOPBITS_1,
+                     UART_PARITY_NONE);
+    us100_drv::get_instance().init();
+    us100_drv::get_instance().start();
 #endif
 
 #ifdef SR05_UART
-        SR05_UART.set_level_invert(false,true);
-        SR05_UART.reset(9600, UART_WORDLENGTH_8B, UART_STOPBITS_1,
-                                UART_PARITY_NONE);
-        SR05_UART.enable_rx_dma();
-        sr05_drv::get_instance().init();
-        sr05_drv::get_instance().start();
+    SR05_UART.set_level_invert(false, true);
+    SR05_UART.reset(9600, UART_WORDLENGTH_8B, UART_STOPBITS_1,
+                    UART_PARITY_NONE);
+    SR05_UART.enable_rx_dma();
+    sr05_drv::get_instance().init();
+    sr05_drv::get_instance().start();
 #endif
-        vTaskDelete(nullptr);
-    }
+}
+
+pyro_init_task_t &pyro_init_task()
+{
+    static pyro_init_task_t instance;
+    return instance;
 }
 
 } // namespace pyro

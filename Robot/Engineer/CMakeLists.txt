@@ -38,6 +38,7 @@ set(ARM_EXTRA_SOURCES
         Arm/fsm/arm_normal_state.cpp
         Arm/arm_module.cpp
         Application/arm_app.cpp
+        Arm/arm_interboard_thread.cpp
 )
 
 # ===================== CHASSIS_BOARD 扩展源文件 =====================
@@ -52,11 +53,11 @@ if (BOARD STREQUAL "ARM_BOARD")
     # 针对 ARM_BOARD 的特殊宏定义（作用于 PYRo 目标）
     target_compile_definitions(PYRo PUBLIC
             DR16_UART=PYRO_UART5
+            IMAGE_UART=PYRO_UART1
     )
     # 为 Engineer 自身添加宏定义
     target_compile_definitions(Engineer PRIVATE
             DR16_UART=PYRO_UART5
-            SELF_CTRL_UART=PYRO_UART1
             DEBUG_UART=PYRO_UART10
             INTERBOARD_UART=PYRO_UART7
     )
@@ -77,6 +78,7 @@ target_include_directories(Engineer
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/Arm
         ${CMAKE_CURRENT_SOURCE_DIR}/Arm/fsm
+        ${CMAKE_CURRENT_SOURCE_DIR}/Application
 )
 
 # ===================== 链接依赖库 =====================
