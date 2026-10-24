@@ -9,7 +9,6 @@ namespace pyro
 
 static arm_top_fsm_t main_fsm;
 
-arm_module_t *arm_module_ptr = nullptr;
 arm_cmd_t *arm_cmd_ptr = nullptr;
 arm_deps_t *arm_deps = nullptr;
 fsm_ctx_t *fsm_ctx_ptr = nullptr;
@@ -85,7 +84,7 @@ void arm_rc_task_t::run_loop()
         // 检测按键 Shift 触发
         if (notify_val & EVENT_BIT_TURN_GRIPPER)
         {
-            arm_module_ptr->_turn_gripper_state();
+            arm_module_t::instance()->_turn_gripper_state();
         }
         vTaskDelay(pdMS_TO_TICKS(1));
     }
@@ -144,10 +143,9 @@ void arm_init_task_t::run_loop()
 {
     arm_cmd_ptr = new arm_cmd_t();
     deps_init();
-    arm_module_ptr = arm_module_t::instance();
-    arm_module_ptr->configure(*arm_deps);
+    arm_module_t::instance()->configure(*arm_deps);
 
-    arm_module_ptr->start();
+    arm_module_t::instance()->start();
     arm_rc_task().start();
 }
 

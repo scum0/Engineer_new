@@ -9,7 +9,6 @@
 
 namespace pyro
 {
-extern arm_module_t *arm_module_ptr;
 
 // 标签分发，不用实现
 struct resets{};
@@ -48,7 +47,8 @@ public:
     template<typename TagT>
     void ptp_transition(TagT )
     {
-        position_t current_position = arm_module_ptr->_get_current_pos();
+        position_t current_position =
+            arm_module_t::instance()->_get_current_pos();
         constexpr auto param = motion_transition<TagT>::get();
 
         segment_set_ptp(param.duration, current_position, param.target_pos);

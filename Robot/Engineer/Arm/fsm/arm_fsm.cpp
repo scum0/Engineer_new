@@ -28,7 +28,8 @@ int fsm_ctx_t::segment_set_ptp(float duration, const position_t &start_position,
 
 void fsm_ctx_t::ptp_transition(float duration)
 {
-    position_t current_position = arm_module_ptr->_get_current_pos();
+    position_t current_position =
+        arm_module_t::instance()->_get_current_pos();
     segment_set_ptp(duration, current_position, _next_pos);
     set_command();
 }
@@ -36,19 +37,19 @@ void fsm_ctx_t::ptp_transition(float duration)
 void fsm_ctx_t::set_command()
 {
     _cmd_ctx.seg_cmd = _cmd;
-    arm_module_ptr->set_command(_cmd_ctx);
+    arm_module_t::instance()->set_command(_cmd_ctx);
 }
 
 void fsm_ctx_t::set_command(arm_cmd_t::segment_t* cmd)
 {
     memcpy(&_cmd, cmd, sizeof(arm_cmd_t::segment_t));
     _cmd_ctx.seg_cmd = _cmd;
-    arm_module_ptr->set_command(_cmd_ctx);
+    arm_module_t::instance()->set_command(_cmd_ctx);
 }
 
 void fsm_ctx_t::set_command(float *pos)
 {
     memcpy(_cmd.coeff[0].data(), pos, sizeof(position_t));
     _cmd_ctx.seg_cmd = _cmd;
-    arm_module_ptr->set_command(_cmd_ctx);
+    arm_module_t::instance()->set_command(_cmd_ctx);
 }

@@ -21,10 +21,13 @@ endif ()
 # 5. 源文件配置 (按分类排序)
 # ==============================================================================
 target_sources(PYRo PRIVATE
+        Core/Def/pyro_log.c
+        Core/Debug/pyro_hardfault.c
+        Core/Debug/pyro_crashlog.c
         Core/ETL/map.cpp
         Core/Lock/pyro_mutex.cpp
         Core/Lock/pyro_rw_lock.cpp
-        Core/Task/pyro_task.cpp
+        Core/Task/sys_task_monitor.cpp
         Core/Memory/pyro_core_dma_heap.c
         Core/Memory/pyro_core_mem.cpp
         Core/Task/pyro_task.cpp
@@ -33,6 +36,8 @@ target_sources(PYRo PRIVATE
         Peripheral/CAN/pyro_can_drv.cpp
         Peripheral/CAN/pyro_bsp_can.cpp
         Peripheral/DWT/pyro_dwt_drv.cpp
+        Peripheral/OSPI/w25qxx-ospi-transport.cpp
+        Peripheral/OSPI/w25qxx.cpp
         Peripheral/UART/pyro_uart_drv.cpp
         Peripheral/UART/pyro_bsp_uart.cpp
 
@@ -67,6 +72,8 @@ target_sources(PYRo PRIVATE
         Component/SR/pyro_sr04_drv.cpp
         Component/SR/pyro_sr05_drv.cpp
         Component/SR/pyro_us100_drv.cpp
+        Component/WS2812/pyro_ws2812_drv.cpp
+        Component/Flash/pyro_flash_fs.cpp
 
         # --- Debug ---
         Debug/Debug_task.cpp
@@ -78,7 +85,21 @@ target_sources(PYRo PRIVATE
         Device/BMI088/BMI088_middleware.cpp
         Component/Referee/UI/pyro_ui_drv.cpp
 
+        Log/elog/elog_async.c
+        Log/elog/elog_buf.c
+        Log/elog/elog_utils.c
+        Log/elog/elog.c
+        Log/elog/port/elog_port.c
+        Log/elog/port/elog_flash.cpp
+        Log/log.c
 
+        Log/LittleFs/lfs.c
+        Log/LittleFs/lfs_util.c
+        Log/LittleFs/Adapters/adapter-lfs.cpp
+
+        Log/RTT/SEGGER_RTT_ASM_ARMv7M.S
+        Log/RTT/SEGGER_RTT_printf.c
+        Log/RTT/SEGGER_RTT.c
 )
 
 
@@ -89,6 +110,7 @@ target_include_directories(PYRo PUBLIC
         # --- Core ---
         Core/Config
         Core/Def
+        Core/Debug
         Core/ETL
         Core/FSM
         Core/Lock
@@ -98,6 +120,7 @@ target_include_directories(PYRo PUBLIC
         # --- Peripheral ---
         Peripheral/CAN
         Peripheral/DWT
+        Peripheral/OSPI
         Peripheral/UART
 
         # --- Device ---
@@ -127,6 +150,8 @@ target_include_directories(PYRo PUBLIC
         Component/Supercap
         Component/SR
         Component/Image
+        Component/WS2812
+        Component/Flash
 
         # --- Module ---
         Module
@@ -134,7 +159,18 @@ target_include_directories(PYRo PUBLIC
         # --- Debug ---
         Debug/VOFA
         Debug/JCOM
+
+        Log
+        Log/elog
+        Log/elog/port
+        Log/RTT
+        Log/LittleFs
+        Log/LittleFs/Adapters
 )
 
 
 target_link_libraries(PYRo PUBLIC stm32cubemx dsppp_lib)
+
+# DMA 堆大小（放在 RAM_D2 的 .dma_heap 段）。
+# 现用于 UART RX 双缓冲等，16KB 足够；缩小以给日志/文件系统缓冲区留出空间。
+target_compile_definitions(PYRo PUBLIC configTOTAL_DMA_HEAP_SIZE=16384)

@@ -95,7 +95,6 @@ void jcom_drv_t::send()
 void jcom_drv_t::thread()
 {
 
-
     while (true)
     {
         update_data();

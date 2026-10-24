@@ -13,5 +13,5 @@ void arm_top_fsm_t::normal_state_t::execute(owner *owner)
 
 void arm_top_fsm_t::normal_state_t::exit(owner *owner)
 {
-    arm_module_ptr->_clear_pid();
+    arm_module_t::instance()->_clear_pid();
 }

@@ -7,225 +7,182 @@
  */
 
 #include "arm_interboard_thread.h"
+#include "../Application/arm_rc_receive.h"
 
 #include "pyro_bsp_uart.h"
 #include "pyro_core_config.h"
 #include "pyro_crc.h"
-#include "pyro_dr16_rc_drv.h"
-#include "pyro_rc_base_drv.h"
-#include "pyro_rc_core.h"
-#include "pyro_rw_lock.h"
 #include "pyro_task.h"
-#include "pyro_vt03_rc_drv.h"
 
 #include "FreeRTOS.h"
+#include "message_buffer.h"
 #include "task.h"
 
 #include <cstring>
 
 using namespace pyro;
 
-namespace
-{
-
-// ==================== 常量 ====================
-static constexpr uint16_t FRAME_HEADER    = 0xFFA5;
-static constexpr uint32_t CALLBACK_OWNER  = 0xAA;
-static constexpr TickType_t TASK_PERIOD   = pdMS_TO_TICKS(20);
-
-// 摇杆放大系数
-static constexpr float AXIS_SCALE = 3.0f;
-
-// ==================== 帧结构 ====================
-#pragma pack(push, 1)
-struct upper_to_lower_frame_t
-{
-    uint16_t frame_header;
-    uint16_t enable;
-    float vx;
-    float vy;
-    float wz;
-    uint16_t magazine_pos;
-    uint16_t lift_control_mod;
-    uint16_t lift_mannual;
-    uint16_t lift_auto;
-    uint16_t lift_calib_trigger;
-    uint16_t crc16;
-};
-
-struct lower_to_upper_frame_t
-{
-    uint16_t frame_header;
-    uint16_t chassis_online;
-    uint16_t magazine_pos;
-    uint16_t magazine_ready;
-    uint8_t magazine_mask;
-    uint16_t crc16;
-};
-#pragma pack(pop)
-
-// ==================== 静态变量 ====================
-#ifdef INTERBOARD_UART
-static uart_drv_t *s_uart = &INTERBOARD_UART;
-#endif
-
-// 使用 DMA 堆分配缓冲区，确保 DMA 可访问
-__attribute__((section(".dma_heap"))) static uint8_t
-    s_rx_buf[sizeof(lower_to_upper_frame_t)];
-__attribute__((section(".dma_heap"))) static uint8_t
-    s_tx_buf[sizeof(upper_to_lower_frame_t)];
-
-static volatile bool s_rx_new_frame = false;
+__attribute__((section(".dma_heap"))) uint8_t
+    arm_interboard_task_t::_tx_dma_buf[sizeof(upper_to_lower_frame_t)];
 
 // ==================== 接收回调（ISR） ====================
-bool rx_callback(uint8_t *data, uint16_t len,
-                 BaseType_t &xHigherPriorityTaskWoken)
+bool arm_interboard_task_t::rx_callback(
+    uint8_t *data, uint16_t len, BaseType_t &xHigherPriorityTaskWoken)
 {
-    (void)xHigherPriorityTaskWoken;
-
     if (len == sizeof(lower_to_upper_frame_t))
     {
-        UBaseType_t uxSaved = taskENTER_CRITICAL_FROM_ISR();
-        memcpy(static_cast<void *>(s_rx_buf), data, len);
-        s_rx_new_frame = true;
-        taskEXIT_CRITICAL_FROM_ISR(uxSaved);
-        return true;
+        if (_rx_msg_buf != nullptr &&
+            xMessageBufferSendFromISR(_rx_msg_buf, data, len, &xHigherPriorityTaskWoken) == len)
+        {
+            if (_rx_task != nullptr)
+            {
+                vTaskNotifyGiveFromISR(_rx_task, &xHigherPriorityTaskWoken);
+            }
+            return true;
+        }
     }
     return false;
 }
 
-// ==================== 遥控器数据采集 ====================
-/**
- * @brief 从 RC 驱动读取遥控器数据并映射为底盘控制量
- *
- * 若遥控器离线，则输出默认值（速度 0、使能 0）。
- */
-void read_rc_command(upper_to_lower_frame_t *frame)
-{
-    // 默认值
-    float vx        = 0.0f;
-    float vy        = 0.0f;
-    float wz        = 0.0f;
-    uint16_t enable = 0;
-    uint16_t lift   = 0;
-
-    bool rc_online = false;
-
-#ifdef VT03_UART
-    if (vt03_drv_t::instance().check_online())
-    {
-        read_scope_lock lock(vt03_drv_t::instance().get_lock());
-        const auto &vrc = rc_drv_t::read();
-
-        vx = vrc.axes.ly * AXIS_SCALE;
-        vy = vrc.axes.lx * AXIS_SCALE;
-        wz = vrc.axes.rx * AXIS_SCALE;
-
-        enable    = (vrc.switches.gear.current_pos != sw_pos_t::DOWN) ? 1 : 0;
-        rc_online = true;
-    }
-#endif
-
-#ifdef DR16_UART
-    if (!rc_online && dr16_drv_t::instance().check_online())
-    {
-        read_scope_lock lock(dr16_drv_t::instance().get_lock());
-        const auto &vrc = rc_drv_t::read();
-
-        vx = vrc.axes.ly * AXIS_SCALE;
-        vy = vrc.axes.lx * AXIS_SCALE;
-        wz = vrc.axes.rx * AXIS_SCALE;
-
-        // 左拨杆向下 → 失能，其余档位使能
-        enable = (vrc.switches.left.current_pos != sw_pos_t::DOWN) ? 1 : 0;
-
-        // 左拨杆向上 → 收起(2)，否则放下(1)
-        if (vrc.switches.left.current_pos == sw_pos_t::UP)
-            lift = 2;
-        else
-            lift = 1;
-
-        rc_online = true;
-    }
-#endif
-
-    frame->enable    = enable;
-    frame->vx        = vx;
-    frame->vy        = vy;
-    frame->wz        = wz;
-    frame->lift_auto = lift;
-}
-
 // ==================== 发送函数 ====================
-void send_frame()
+void arm_interboard_task_t::send_frame()
 {
-    auto *frame = reinterpret_cast<upper_to_lower_frame_t *>(s_tx_buf);
+    auto *frame = reinterpret_cast<upper_to_lower_frame_t *>(_tx_buf);
 
     // 清零后填充，避免未使用字段残留脏数据
     memset(frame, 0, sizeof(upper_to_lower_frame_t));
 
-    read_rc_command(frame);
-
+    const arm_rc_t command = get_arm_rc();
+    frame->enable       = command.enable;
+    frame->vx           = command.vx;
+    frame->vy           = command.vy;
+    frame->wz           = command.wz;
+    frame->lift_auto    = command.lift_auto;
     frame->frame_header = FRAME_HEADER;
     append_crc16_check_sum(reinterpret_cast<uint8_t *>(frame),
                            sizeof(upper_to_lower_frame_t));
 
 #ifdef INTERBOARD_UART
-    if (s_uart)
+    if (_uart)
     {
-        // 阻塞轮询发送，确保发送完成后再修改缓冲区
-        s_uart->write(reinterpret_cast<uint8_t *>(frame),
-                      sizeof(upper_to_lower_frame_t), 100);
+        _uart->write(reinterpret_cast<uint8_t *>(frame),sizeof(upper_to_lower_frame_t));
     }
 #endif
 }
 
 // ==================== 接收处理 ====================
-void process_received_frame()
+void arm_interboard_task_t::process_received_frames()
 {
-    if (!s_rx_new_frame)
-        return;
+    lower_to_upper_frame_t frame{};
+    while (xMessageBufferReceive(_rx_msg_buf, &frame, sizeof(frame), 0) ==
+           sizeof(frame))
+    {
+        if (frame.frame_header != FRAME_HEADER)
+            continue;
+        if (!verify_crc16_check_sum(reinterpret_cast<uint8_t *>(&frame),
+                                    sizeof(frame)))
+            continue;
 
-    taskENTER_CRITICAL();
-    s_rx_new_frame = false;
-    taskEXIT_CRITICAL();
-
-    auto *frame = reinterpret_cast<lower_to_upper_frame_t *>(s_rx_buf);
-
-    if (frame->frame_header != FRAME_HEADER)
-        return;
-    if (!verify_crc16_check_sum(s_rx_buf, sizeof(lower_to_upper_frame_t)))
-        return;
+        scoped_mutex_t lock(_msg_mutex);
+        _msg.chassis_online = frame.chassis_online != 0;
+        _msg.magazine_pos   = frame.magazine_pos;
+        _msg.magazine_ready = frame.magazine_ready != 0;
+        _msg.magazine_mask  = frame.magazine_mask & 0x0F;
+        _last_rx_tick       = xTaskGetTickCount();
+    }
 }
 
-} // namespace
+void arm_interboard_task_t::check_rx_timeout()
+{
+    if (_msg.chassis_online &&
+        xTaskGetTickCount() - _last_rx_tick > RX_TIMEOUT)
+    {
+        _msg = {};
+    }
+}
+
+chassis_msg_t arm_interboard_task_t::get_msg()
+{
+    scoped_mutex_t lock(_msg_mutex);
+    check_rx_timeout();
+    return _msg;
+}
 
 // ==================== 板间通信任务 ====================
 namespace pyro
 {
 
+chassis_msg_t get_interboard_msg()
+{
+    return arm_interboard_task().get_msg();
+}
+
 arm_interboard_task_t::arm_interboard_task_t()
     : task_base_t("arm_interboard", 512, 512, priority_t::BELOW_NORMAL)
 {
+#ifdef INTERBOARD_UART
+    _uart = &INTERBOARD_UART;
+#endif
 }
 
 status_t arm_interboard_task_t::init()
 {
 #ifdef INTERBOARD_UART
+    _tx_buf = _tx_dma_buf;
+
+    constexpr size_t RX_MSG_BUF_SIZE = sizeof(lower_to_upper_frame_t) * 4U + 4U;
+    _rx_msg_buf = xMessageBufferCreate(RX_MSG_BUF_SIZE);
+    if (_rx_msg_buf == nullptr)
+    {
+        return PYRO_NO_MEMORY;
+    }
+
+    _tx_done_sem = xSemaphoreCreateBinary();
+    if (_tx_done_sem == nullptr)
+    {
+        return PYRO_NO_MEMORY;
+    }
+    _uart->set_tx_cplt_callback(
+        [this](BaseType_t &xHigherPriorityTaskWoken)
+        {
+            xSemaphoreGiveFromISR(_tx_done_sem, &xHigherPriorityTaskWoken);
+        });
+
     // 注册接收回调
-    s_uart->add_rx_event_callback(rx_callback, CALLBACK_OWNER);
+    _uart->add_rx_event_callback(
+        [this](uint8_t *data, uint16_t len,
+               BaseType_t &xHigherPriorityTaskWoken) -> bool
+        {
+            return rx_callback(data, len, xHigherPriorityTaskWoken);
+        },
+        CALLBACK_OWNER);
     // 启动 DMA 接收
-    s_uart->enable_rx_dma();
+    _uart->enable_rx_dma();
 #endif
     return PYRO_OK;
 }
 
 void arm_interboard_task_t::run_loop()
 {
+    _rx_task = xTaskGetCurrentTaskHandle();
+
     for (;;)
     {
-        send_frame();
-        process_received_frame();
+        // 上一次 DMA 发送完成后才覆盖发送缓冲区。
+        if (xSemaphoreTake(_tx_done_sem, 0) == pdTRUE ||
+            _uart->state.tx_busy == 0)
+        {
+            send_frame();
+        }
+
+        if (ulTaskNotifyTake(pdTRUE, 0) > 0)
+        {
+            process_received_frames();
+        }
+        {
+            scoped_mutex_t lock(_msg_mutex);
+            check_rx_timeout();
+        }
         vTaskDelay(TASK_PERIOD);
     }
 }

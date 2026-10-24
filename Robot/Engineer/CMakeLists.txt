@@ -38,6 +38,7 @@ set(ARM_EXTRA_SOURCES
         Arm/fsm/arm_normal_state.cpp
         Arm/arm_module.cpp
         Application/arm_app.cpp
+        Application/arm_rc_receive.cpp
         Arm/arm_interboard_thread.cpp
 )
 
@@ -59,6 +60,7 @@ if (BOARD STREQUAL "ARM_BOARD")
     target_compile_definitions(Engineer PRIVATE
             DR16_UART=PYRO_UART5
             DEBUG_UART=PYRO_UART10
+            IMAGE_UART=PYRO_UART1
             INTERBOARD_UART=PYRO_UART7
     )
 
