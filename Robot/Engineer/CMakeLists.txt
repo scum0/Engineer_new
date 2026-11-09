@@ -37,8 +37,8 @@ set(ARM_EXTRA_SOURCES
         Arm/fsm/arm_idle_state.cpp
         Arm/fsm/arm_normal_state.cpp
         Arm/arm_module.cpp
-        Application/arm_app.cpp
-        Application/arm_rc_receive.cpp
+        Arm/application/arm_app.cpp
+        Arm/application/arm_rc_receive.cpp
         Arm/arm_interboard_thread.cpp
 )
 
@@ -58,9 +58,7 @@ if (BOARD STREQUAL "ARM_BOARD")
     )
     # 为 Engineer 自身添加宏定义
     target_compile_definitions(Engineer PRIVATE
-            DR16_UART=PYRO_UART5
             DEBUG_UART=PYRO_UART10
-            IMAGE_UART=PYRO_UART1
             INTERBOARD_UART=PYRO_UART7
     )
 
@@ -78,14 +76,14 @@ endif()
 target_include_directories(Engineer
         PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/Arm
+        ${CMAKE_CURRENT_SOURCE_DIR}/Arm/application
         ${CMAKE_CURRENT_SOURCE_DIR}/Arm/fsm
-        ${CMAKE_CURRENT_SOURCE_DIR}/Application
+        ${CMAKE_CURRENT_SOURCE_DIR}/Arm
 )
 
 # ===================== 链接依赖库 =====================
 target_link_libraries(Engineer
-        PUBLIC
+        PRIVATE
         stm32cubemx
         dsppp_lib
         PYRo

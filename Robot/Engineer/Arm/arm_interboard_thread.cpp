@@ -7,7 +7,7 @@
  */
 
 #include "arm_interboard_thread.h"
-#include "../Application/arm_rc_receive.h"
+#include "arm_rc_receive.h"
 
 #include "pyro_bsp_uart.h"
 #include "pyro_core_config.h"
@@ -118,7 +118,7 @@ chassis_msg_t get_interboard_msg()
 }
 
 arm_interboard_task_t::arm_interboard_task_t()
-    : task_base_t("arm_interboard", 512, 512, priority_t::BELOW_NORMAL)
+    : task_base_t("arm_interboard", 512, 256, priority_t::BELOW_NORMAL)
 {
 #ifdef INTERBOARD_UART
     _uart = &INTERBOARD_UART;

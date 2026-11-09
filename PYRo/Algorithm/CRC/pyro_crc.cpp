@@ -1,5 +1,6 @@
 #include <cstdint>
 #include "pyro_crc.h"
+#include "pyro_drv_log.h"
 
 // ===================================================================
 //                               CRC16
@@ -70,12 +71,23 @@ uint8_t verify_crc16_check_sum(uint8_t const *p_msg, const uint16_t len)
 
     if ((p_msg == nullptr) || (len <= 2))
     {
+        PYRO_DRV_LOGW("CRC", "crc16 verify skipped: buf=%p, len=%u",
+                      static_cast<const void *>(p_msg), static_cast<unsigned>(len));
         return 0; // false
     }
     w_expected = get_crc16_check_sum(p_msg, len - 2, crc16_init);
 
-    return ((w_expected & 0xff) == p_msg[len - 2] &&
-            ((w_expected >> 8) & 0xff) == p_msg[len - 1]);
+    const uint8_t result = ((w_expected & 0xff) == p_msg[len - 2] &&
+                            ((w_expected >> 8) & 0xff) == p_msg[len - 1]);
+    if (!result)
+    {
+        PYRO_DRV_LOGW("CRC", "crc16 mismatch: calc=0x%04X, recv=0x%04X, len=%u",
+                      static_cast<unsigned>(w_expected),
+                      static_cast<unsigned>(p_msg[len - 2] |
+                                            (static_cast<uint16_t>(p_msg[len - 1]) << 8)),
+                      static_cast<unsigned>(len));
+    }
+    return result;
 }
 
 /**
@@ -133,7 +145,9 @@ static uint8_t get_crc8_check_sum(uint8_t const *p_msg, uint16_t len, uint8_t cr
 {
     uint8_t index;
     if (p_msg == nullptr)
+    {
         return 0xff;
+    }
 
     while (len--)
     {
@@ -152,11 +166,21 @@ uint8_t verify_crc8_check_sum(uint8_t const *p_msg, const uint16_t len)
 
     if ((p_msg == nullptr) || (len <= 1))
     {
+        PYRO_DRV_LOGW("CRC", "crc8 verify skipped: buf=%p, len=%u",
+                      static_cast<const void *>(p_msg), static_cast<unsigned>(len));
         return 0; // false
     }
 
     expected = get_crc8_check_sum(p_msg, len - 1, crc8_init);
-    return (expected == p_msg[len - 1]);
+    if (expected != p_msg[len - 1])
+    {
+        PYRO_DRV_LOGW("CRC", "crc8 mismatch: calc=0x%02X, recv=0x%02X, len=%u",
+                      static_cast<unsigned>(expected),
+                      static_cast<unsigned>(p_msg[len - 1]),
+                      static_cast<unsigned>(len));
+        return 0;
+    }
+    return 1;
 }
 
 /**

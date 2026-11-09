@@ -5,6 +5,7 @@
 
 #include "cstring"
 #include "pyro_bsp_uart.h"
+#include "pyro_drv_log.h"
 
 
 
@@ -13,6 +14,11 @@ namespace pyro
 vofa_drv_t::vofa_drv_t(uint8_t max_length, uart_drv_t *uart)
 {
     _data_pack = static_cast<float *>(pvPortDmaMalloc(4 * max_length));
+    if (!_data_pack)
+    {
+        PYRO_DRV_LOGW("VOFA", "dma buffer allocation failed, len=%u",
+                      static_cast<unsigned>(max_length));
+    }
     _length    = 0;
     _vofa_uart = uart;
 }
@@ -92,8 +98,12 @@ void vofa_drv_t::update_data()
 
 void vofa_drv_t::send()
 {
-    _vofa_uart->write(reinterpret_cast<uint8_t *>(_data_pack),
-                      (_length + 1) * 4);
+    if (_vofa_uart->write(reinterpret_cast<uint8_t *>(_data_pack),
+                          (_length + 1) * 4) != PYRO_OK)
+    {
+        PYRO_DRV_LOGW("VOFA", "send failed, len=%u",
+                      static_cast<unsigned>((_length + 1) * 4));
+    }
 }
 
 

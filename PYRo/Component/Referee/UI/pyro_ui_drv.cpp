@@ -4,6 +4,7 @@
  */
 
 #include "pyro_ui_drv.h"
+#include "pyro_drv_log.h"
 #include <cstring>
 #include <cmath>
 
@@ -54,9 +55,12 @@ void ui_drv_t::check_and_try_send()
     // 如果缓存满了 7 个，则直接打包发送这 7 个图形并从队列中移除
     if (_buffer.size() >= 7)
     {
-        _referee->send_ui_interaction(
-            static_cast<uint16_t>(interaction_sub_cmd::UI_CMD_DRAW_7),
-            &_buffer[0]);
+        if (!_referee->send_ui_interaction(
+                static_cast<uint16_t>(interaction_sub_cmd::UI_CMD_DRAW_7),
+                &_buffer[0]))
+        {
+            PYRO_DRV_LOGW("UI", "send 7-figure packet failed");
+        }
         _buffer.erase(_buffer.begin(), _buffer.begin() + 7);
     }
 }
@@ -235,6 +239,10 @@ bool ui_drv_t::flush()
     }
 
     _buffer.clear();
+    if (!success)
+    {
+        PYRO_DRV_LOGW("UI", "flush failed");
+    }
     return success;
 }
 

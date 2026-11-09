@@ -54,7 +54,7 @@ constexpr float PI = 3.14159265358979323846f;
 #define PYRO_ASSERT_RET(expr)                                                  \
     ((expr) ? PYRO_OK : log((uint8_t *)__FILE__, __LINE__))
 #else
-#define PYRO_ASSERT_RET(expr) ((void)0U
+#define PYRO_ASSERT_RET(expr) ((void)0U)
 #endif
 #define PYRO_ASSERT_RET_BLOCK(expr) ((expr) ? PYRO_OK : do {} while (1))
 

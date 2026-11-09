@@ -4,6 +4,7 @@
 
 #include "pyro_dji_motor_drv.h"
 #include "pyro_dwt_drv.h"
+#include "pyro_drv_log.h"
 #include <cmath>
 #include <cstring>
 
@@ -26,7 +27,11 @@ dji_motor_tx_frame_t::~dji_motor_tx_frame_t()
 status_t dji_motor_tx_frame_t::register_id(dji_motor_tx_frame_t::register_id_t id)
 {
     if (_register_list[id % 4] != 0)
+    {
+        PYRO_DRV_LOGW("DJI", "tx frame slot %u already registered",
+                      static_cast<unsigned>(id % 4));
         return PYRO_ERROR;
+    }
     _register_list[id % 4] = 1;
     return PYRO_OK;
 }
@@ -216,6 +221,11 @@ dji_m3508_motor_drv_t::dji_m3508_motor_drv_t(
     _tx_frame->register_id(_register_id);
     _max_torque_f = 20.0f;
     _max_torque_i = 16384;
+    if (_init_status != PYRO_OK)
+    {
+        PYRO_DRV_LOGW("DJI", "M3508 id=%u init failed: invalid id",
+                      static_cast<unsigned>(_register_id));
+    }
 }
 
 dji_m2006_motor_drv_t::dji_m2006_motor_drv_t(
@@ -253,6 +263,11 @@ dji_m2006_motor_drv_t::dji_m2006_motor_drv_t(
     _tx_frame->register_id(_register_id);
     _max_torque_f = 10.0f;
     _max_torque_i = 10000;
+    if (_init_status != PYRO_OK)
+    {
+        PYRO_DRV_LOGW("DJI", "M2006 id=%u init failed: invalid id",
+                      static_cast<unsigned>(_register_id));
+    }
 }
 
 dji_gm_6020_motor_drv_t::dji_gm_6020_motor_drv_t(
@@ -302,6 +317,12 @@ dji_gm_6020_motor_drv_t::dji_gm_6020_motor_drv_t(
     {
         // 电压模式：给定值范围 -25000~0~25000
         _max_torque_i = 25000;
+    }
+
+    if (_init_status != PYRO_OK)
+    {
+        PYRO_DRV_LOGW("DJI", "GM6020 id=%u init failed: invalid id",
+                      static_cast<unsigned>(_register_id));
     }
 }
 

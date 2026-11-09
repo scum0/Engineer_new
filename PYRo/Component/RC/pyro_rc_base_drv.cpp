@@ -1,4 +1,5 @@
 #include "pyro_rc_base_drv.h"
+#include "pyro_drv_log.h"
 
 namespace pyro
 {
@@ -53,7 +54,10 @@ status_t rc_drv_t::task_init()
 {
     _rc_msg_buffer = xMessageBufferCreate(_frame_len * 6 + 24);
     if (_rc_msg_buffer == nullptr)
+    {
+        PYRO_DRV_LOGW("RC", "create message buffer failed");
         return PYRO_ERROR;
+    }
 
     _rx_buf = new uint8_t[_frame_len];
     return PYRO_OK;
@@ -111,6 +115,7 @@ void rc_drv_t::task_run_loop()
             else if (bytes == 0)
             {
                 sequence &= ~(1 << _priority_bit);
+                PYRO_DRV_LOGW("RC", "signal lost");
             }
         }
     }

@@ -17,6 +17,7 @@
  * Implements core logic such as driver initialization, data reading, and CAN message processing.
  */
 #include "pyro_powermeter.h"
+#include "pyro_drv_log.h"
 #include <cstring>
 
 namespace pyro {
@@ -81,12 +82,15 @@ namespace pyro {
 {
     _can_drv = bsp_can::get_can(_which);
     if (_can_drv == nullptr) {
+        PYRO_DRV_LOGW("POWER", "get can driver failed, which=%d",
+                      static_cast<int>(_which));
         return PYRO_ERROR;
     }
 
     _msg_buffer = new can_msg_buffer_t(_can_id);
     if (_msg_buffer == nullptr) 
     {
+        PYRO_DRV_LOGW("POWER", "message buffer allocation failed");
         return PYRO_NO_MEMORY;
     }
 
@@ -95,6 +99,8 @@ namespace pyro {
     {
         delete _msg_buffer;
         _msg_buffer = nullptr;
+        PYRO_DRV_LOGW("POWER", "register rx msg failed, can_id=0x%03lX",
+                      static_cast<unsigned long>(_can_id));
         return reg_status;
     }
 

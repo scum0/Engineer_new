@@ -27,6 +27,10 @@ private:
 
 void self_control_command_t::update()
 {
+#ifdef IMAGE_UART
+    if (!image_drv_t::get_instance().is_online())
+        return;
+
     const uint8_t *rx_data = image_drv_t::get_instance().get_controller_rx_data();
     memcpy(_origin_command.data(), rx_data, sizeof(position_t));
 
@@ -35,6 +39,7 @@ void self_control_command_t::update()
         _filter_command[i] =
             _filter_command[i] * (1.0f - alpha) + _origin_command[i] * alpha;
     }
+#endif
 }
 
 float *self_control_command_t::get_self_control_command()

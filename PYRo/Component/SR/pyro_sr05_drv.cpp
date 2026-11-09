@@ -1,6 +1,7 @@
 #include "pyro_sr05_drv.h"
 #include "pyro_bsp_uart.h"
 #include "pyro_core_config.h"
+#include "pyro_drv_log.h"
 
 namespace pyro
 {
@@ -32,6 +33,10 @@ void sr05_drv::init()
             [this](const uint8_t *p, uint16_t sz, BaseType_t &woken) -> bool
             { return this->rx_callback_impl(p, sz); },
             reinterpret_cast<uint32_t>(this));
+    }
+    else
+    {
+        PYRO_DRV_LOGW("SR05", "init failed: uart is null");
     }
 }
 

@@ -4,6 +4,7 @@
 
 #include "pyro_can_drv.h"
 #include "main.h"
+#include "pyro_drv_log.h"
 #include <cstring>
 
 namespace pyro
@@ -39,22 +40,32 @@ status_t recover_bus_off(FDCAN_HandleTypeDef *hfdcan)
     FDCAN_ProtocolStatusTypeDef protocol_status{};
 
     if (HAL_OK != HAL_FDCAN_GetProtocolStatus(hfdcan, &protocol_status))
+    {
+        PYRO_DRV_LOGW("CAN", "get protocol status failed during bus-off check");
         return PYRO_ERROR;
+    }
 
     if (0U == protocol_status.BusOff)
         return PYRO_OK;
 
+    PYRO_DRV_LOGW("CAN", "bus-off detected, recovering");
     abort_pending_tx(hfdcan);
 
     (void)HAL_FDCAN_Stop(hfdcan);
     hfdcan->ErrorCode = HAL_FDCAN_ERROR_NONE;
 
     if (HAL_OK != HAL_FDCAN_Start(hfdcan))
+    {
+        PYRO_DRV_LOGW("CAN", "bus-off recovery failed at restart");
         return PYRO_ERROR;
+    }
 
     const status_t notify_status = reactivate_can_notifications(hfdcan);
     if (PYRO_OK != notify_status)
+    {
+        PYRO_DRV_LOGW("CAN", "bus-off recovery failed at notification");
         return notify_status;
+    }
 
     return PYRO_BUSY;
 }
@@ -183,7 +194,10 @@ pyro::status_t can_drv_t::init()
     fdcan_filter_std.FilterID2    = 0x00;
 
     if (HAL_OK != HAL_FDCAN_ConfigFilter(_hfdcan, &fdcan_filter_std))
+    {
+        PYRO_DRV_LOGW("CAN", "configure standard filter failed");
         return pyro::PYRO_ERROR;
+    }
 
     // Configure extended ID filter
     FDCAN_FilterTypeDef fdcan_filter_ext;
@@ -195,16 +209,25 @@ pyro::status_t can_drv_t::init()
     fdcan_filter_ext.FilterID2    = 0x00;
 
     if (HAL_OK != HAL_FDCAN_ConfigFilter(_hfdcan, &fdcan_filter_ext))
+    {
+        PYRO_DRV_LOGW("CAN", "configure extended filter failed");
         return pyro::PYRO_ERROR;
+    }
 
     // Configure global filter to accept both standard and extended frames
     if (HAL_OK !=
         HAL_FDCAN_ConfigGlobalFilter(_hfdcan, FDCAN_ACCEPT_IN_RX_FIFO0,
                                      FDCAN_ACCEPT_IN_RX_FIFO0,
                                      FDCAN_REJECT_REMOTE, FDCAN_REJECT_REMOTE))
+    {
+        PYRO_DRV_LOGW("CAN", "configure global filter failed");
         return pyro::PYRO_ERROR;
+    }
     if (HAL_OK != HAL_FDCAN_ConfigFifoWatermark(_hfdcan, FDCAN_CFG_RX_FIFO0, 1))
+    {
+        PYRO_DRV_LOGW("CAN", "configure rx fifo watermark failed");
         return pyro::PYRO_ERROR;
+    }
 
     return pyro::PYRO_OK;
 }
@@ -212,16 +235,27 @@ pyro::status_t can_drv_t::init()
 pyro::status_t can_drv_t::start() const
 {
     if (HAL_OK != HAL_FDCAN_Start(_hfdcan))
+    {
+        PYRO_DRV_LOGW("CAN", "controller start failed");
         return pyro::PYRO_ERROR;
+    }
 
-    return reactivate_can_notifications(_hfdcan);
+    const status_t ret = reactivate_can_notifications(_hfdcan);
+    if (PYRO_OK != ret)
+    {
+        PYRO_DRV_LOGW("CAN", "activate notifications failed");
+    }
+    return ret;
 }
 
 pyro::status_t can_drv_t::send_msg(const uint32_t id, const uint8_t *data,
                                    const can_msg_buffer_t::id_type_t type) const
 {
     if (nullptr == _hfdcan || nullptr == data)
+    {
+        PYRO_DRV_LOGW("CAN", "send rejected: null handle or data");
         return pyro::PYRO_PARAM_ERROR;
+    }
 
     if (HAL_FDCAN_STATE_BUSY != _hfdcan->State)
         return pyro::PYRO_BUSY;
@@ -267,6 +301,8 @@ pyro::status_t can_drv_t::send_msg(const uint32_t id, const uint8_t *data,
         }
 
         taskEXIT_CRITICAL();
+        PYRO_DRV_LOGW("CAN", "send failed, id=0x%03lX",
+                      static_cast<unsigned long>(id));
         return pyro::PYRO_ERROR;
     }
     taskEXIT_CRITICAL();
@@ -285,6 +321,8 @@ pyro::status_t can_drv_t::register_rx_msg(can_msg_buffer_t *msg_buffer)
         if (this->_registerlist.exist(key))
         {
             taskEXIT_CRITICAL();
+            PYRO_DRV_LOGW("CAN", "duplicate rx registration, id=0x%03lX",
+                          static_cast<unsigned long>(msg_buffer->get_id()));
             return pyro::PYRO_ERROR;
         }
         this->_registerlist[key] = msg_buffer;
@@ -302,6 +340,7 @@ pyro::status_t can_drv_t::register_rx_msg(can_msg_buffer_t *msg_buffer)
         else
         {
             taskEXIT_CRITICAL();
+        PYRO_DRV_LOGW("CAN", "mask rx buffer table full");
             return PYRO_ERROR;
         }
     }
@@ -309,29 +348,33 @@ pyro::status_t can_drv_t::register_rx_msg(can_msg_buffer_t *msg_buffer)
     return pyro::PYRO_OK;
 }
 
-// CAN调试全局变量（外部定义，如果不存在则使用弱引用）
-extern "C" {
-    extern uint32_t can_debug_last_extended_id __attribute__((weak));
-    extern uint32_t can_debug_frame_count __attribute__((weak));
-    extern uint32_t can_debug_ids[10] __attribute__((weak));
-    extern uint8_t can_debug_id_index __attribute__((weak));
-}
+// 扩展帧调试记录：默认关闭，定义 PYRO_CAN_DEBUG_EXTENDED_ID 后启用。
+// 旧实现用 weak 符号地址判断变量是否存在，但未定义时符号地址仍非空，
+// 实际会向地址 0 写入并在 CAN 接收中断里触发 HardFault。
+#if defined(PYRO_CAN_DEBUG_EXTENDED_ID)
+namespace
+{
+uint32_t can_debug_last_extended_id = 0;
+uint32_t can_debug_frame_count      = 0;
+uint32_t can_debug_ids[10]{};
+uint8_t can_debug_id_index = 0;
+} // namespace
+#endif
 
 __attribute__((section(".itcm_text"))) pyro::status_t
 can_drv_t::handle_rx_msg(const uint32_t id, const uint8_t *data,
                          const can_msg_buffer_t::id_type_t type)
 {
+#if defined(PYRO_CAN_DEBUG_EXTENDED_ID)
     // 调试：记录所有扩展帧（如果调试变量存在）
     if (type == can_msg_buffer_t::EXTENDED_ID)
     {
-        if (&can_debug_last_extended_id != nullptr)
-        {
-            can_debug_last_extended_id = id;
-            can_debug_frame_count++;
-            can_debug_ids[can_debug_id_index] = id;
-            can_debug_id_index = (can_debug_id_index + 1) % 10;
-        }
+        can_debug_last_extended_id = id;
+        can_debug_frame_count++;
+        can_debug_ids[can_debug_id_index] = id;
+        can_debug_id_index = (can_debug_id_index + 1) % 10;
     }
+#endif
 
     // 先尝试精确匹配（快速路径）
     const register_key_t key(id, type);

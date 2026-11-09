@@ -2,6 +2,7 @@
 #include "pyro_bsp_uart.h"
 #include "pyro_core_config.h"
 #include "pyro_core_dma_heap.h"
+#include "pyro_drv_log.h"
 
 namespace pyro
 {
@@ -17,6 +18,7 @@ sr04_drv::sr04_drv(uart_drv_t *uart) : sonic_base_drv(uart, "sr04_task")
 {
     _tx_buf = static_cast<uint8_t *>(pvPortDmaMalloc(1));
     if (_tx_buf) *_tx_buf = 0xA0; // HC-SR04 单芯片版串口触发命令
+    else PYRO_DRV_LOGW("SR04", "tx dma buffer allocation failed");
 }
 
 sr04_drv::~sr04_drv()
@@ -32,6 +34,10 @@ void sr04_drv::init()
             [this](const uint8_t *p, uint16_t sz, BaseType_t &woken) -> bool
             { return this->rx_callback_impl(p, sz); },
             reinterpret_cast<uint32_t>(this));
+    }
+    else
+    {
+        PYRO_DRV_LOGW("SR04", "init failed: uart is null");
     }
 }
 

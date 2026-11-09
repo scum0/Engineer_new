@@ -18,6 +18,7 @@
 #include <stdexcept>
 
 #include "pyro_core_dma_heap.h"
+#include "pyro_drv_log.h"
 
 namespace pyro
 {
@@ -38,6 +39,11 @@ uart_drv_t::uart_drv_t(UART_HandleTypeDef *huart, const uint16_t buf_length)
         memset(rx_buf[0], 0, buf_length);
         memset(rx_buf[1], 0, buf_length);
         _rx_buf_size = buf_length;
+    }
+    else
+    {
+        PYRO_DRV_LOGW("UART", "rx dma buffer allocation failed, size=%u",
+                      static_cast<unsigned>(buf_length));
     }
     rx_buf_switch = 0;
 }
@@ -84,8 +90,12 @@ status_t uart_drv_t::write(const uint8_t *p, const uint16_t size,
     if (ret == HAL_TIMEOUT)
     {
         state.tx_timeout = 0x01U;
+        PYRO_DRV_LOGW("UART", "blocking tx timeout, size=%u",
+                      static_cast<unsigned>(size));
         return PYRO_TIMEOUT;
     }
+    PYRO_DRV_LOGW("UART", "blocking tx failed, ret=%u, size=%u",
+                  static_cast<unsigned>(ret), static_cast<unsigned>(size));
     return PYRO_ERROR;
 }
 
@@ -99,6 +109,8 @@ status_t uart_drv_t::write(const uint8_t *p, const uint16_t size)
         state.tx_busy = 0x01U;
         return PYRO_BUSY;
     }
+    PYRO_DRV_LOGW("UART", "dma tx failed, ret=%u, size=%u",
+                  static_cast<unsigned>(ret), static_cast<unsigned>(size));
     return PYRO_ERROR;
 }
 
@@ -159,9 +171,16 @@ status_t uart_drv_t::reset(const uint32_t BaudRate, const uint32_t WordLength,
     _huart->Init.Parity     = Parity;
 
     if (HAL_OK != HAL_UART_DeInit(_huart))
+    {
+        PYRO_DRV_LOGW("UART", "reset failed at deinit");
         return PYRO_ERROR;
+    }
     if (HAL_OK != HAL_UART_Init(_huart))
+    {
+        PYRO_DRV_LOGW("UART", "reset failed at init, baud=%lu",
+                      static_cast<unsigned long>(BaudRate));
         return PYRO_ERROR;
+    }
 
     // Clear all pending error flags.
     // 清除所有挂起的错误标志。
@@ -189,9 +208,15 @@ status_t uart_drv_t::set_pin_swap(const bool enable)
 
     // 重新初始化串口使配置生效
     if (HAL_OK != HAL_UART_DeInit(_huart))
+    {
+        PYRO_DRV_LOGW("UART", "set pin swap failed at deinit");
         return PYRO_ERROR;
+    }
     if (HAL_OK != HAL_UART_Init(_huart))
+    {
+        PYRO_DRV_LOGW("UART", "set pin swap failed at init");
         return PYRO_ERROR;
+    }
 
     // 更新标志位
     state.pin_swapped = enable ? 1 : 0;
@@ -216,9 +241,15 @@ status_t uart_drv_t::set_level_invert(const bool tx_invert, const bool rx_invert
 
     // 重新初始化串口使配置生效
     if (HAL_OK != HAL_UART_DeInit(_huart))
+    {
+        PYRO_DRV_LOGW("UART", "set level invert failed at deinit");
         return PYRO_ERROR;
+    }
     if (HAL_OK != HAL_UART_Init(_huart))
+    {
+        PYRO_DRV_LOGW("UART", "set level invert failed at init");
         return PYRO_ERROR;
+    }
 
     // 只要有任意一个引脚发生了反转，标志位置 1
     state.level_inverted = (tx_invert || rx_invert) ? 1 : 0;
@@ -247,6 +278,8 @@ status_t uart_drv_t::remove_rx_event_callback(const uint32_t owner)
             return PYRO_OK;
         }
     }
+    PYRO_DRV_LOGW("UART", "remove rx callback failed, owner=0x%08lX",
+                  static_cast<unsigned long>(owner));
     return PYRO_NOT_FOUND;
 }
 

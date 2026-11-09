@@ -3,6 +3,7 @@
 #include "pyro_bsp_uart.h"
 #include "pyro_core_config.h"
 #include "pyro_core_dma_heap.h"
+#include "pyro_drv_log.h"
 
 namespace pyro
 {
@@ -19,6 +20,7 @@ us100_drv::us100_drv(uart_drv_t *uart) : sonic_base_drv(uart, "us100_task")
 {
     _tx_buf = static_cast<uint8_t *>(pvPortDmaMalloc(1));
     if (_tx_buf) *_tx_buf = 0x55; // US-100 测距启动电平
+    else PYRO_DRV_LOGW("US100", "tx dma buffer allocation failed");
 }
 
 us100_drv::~us100_drv()
@@ -34,6 +36,10 @@ void us100_drv::init()
             [this](const uint8_t *p, uint16_t sz, BaseType_t &woken) -> bool
             { return this->rx_callback_impl(p, sz); },
             reinterpret_cast<uint32_t>(this));
+    }
+    else
+    {
+        PYRO_DRV_LOGW("US100", "init failed: uart is null");
     }
 }
 

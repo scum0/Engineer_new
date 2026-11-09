@@ -3,6 +3,7 @@
  */
 
 #include "pyro_dm_motor_drv.h"
+#include "pyro_drv_log.h"
 
 namespace pyro
 {
@@ -12,6 +13,7 @@ dm_motor_drv_t::dm_motor_drv_t(uint32_t can_id, uint32_t master_id,
 {
     _master_id     = master_id;
     _can_id        = can_id;
+    _error_code    = error_code::ok;
     _feedback_msg = new can_msg_buffer_t(_master_id);
     if (_can_drv)
     {
@@ -29,7 +31,11 @@ status_t pyro::dm_motor_drv_t::enable()
     data.fill(0xFF);
     data[7] = 0xfc;
     if(PYRO_OK!=_can_drv->send_msg(_can_id, data.data()))
+    {
+        PYRO_DRV_LOGW("DM", "enable cmd failed, can=0x%03lX",
+                      static_cast<unsigned long>(_can_id));
         return PYRO_ERROR;
+    }
     _enable = true;
     return PYRO_OK;
 }
@@ -41,6 +47,8 @@ status_t dm_motor_drv_t::disable()
     data[7] = 0xfd;
     if(PYRO_OK!=_can_drv->send_msg(_can_id, data.data()))
     {
+        PYRO_DRV_LOGW("DM", "disable cmd failed, can=0x%03lX",
+                      static_cast<unsigned long>(_can_id));
         return PYRO_ERROR;
     }
     _enable = false;
@@ -53,7 +61,11 @@ status_t dm_motor_drv_t::clear_error()
     data.fill(0xFF);
     data[7] = 0xfb;
     if(PYRO_OK!=_can_drv->send_msg(_can_id, data.data()))
+    {
+        PYRO_DRV_LOGW("DM", "clear error cmd failed, can=0x%03lX",
+                      static_cast<unsigned long>(_can_id));
         return PYRO_ERROR;
+    }
     return PYRO_OK;
 }
 
@@ -76,7 +88,14 @@ status_t pyro::dm_motor_drv_t::update_feedback()
     std::array<uint8_t, 8> data;
     if (!_feedback_msg->get_data(data))
         return PYRO_ERROR;
+    const error_code last_error = _error_code;
     _error_code = static_cast<error_code>(((data[0]>>4)&0x0f));
+    if (_error_code != last_error && _error_code != error_code::ok)
+    {
+        PYRO_DRV_LOGW("DM", "error code=0x%02X, can=0x%03lX",
+                      static_cast<unsigned>(_error_code),
+                      static_cast<unsigned long>(_can_id));
+    }
     switch(_error_code)
     {
         case error_code::ok:_enable = true;break;
@@ -115,6 +134,8 @@ status_t pyro::dm_motor_drv_t::send_torque(float torque)
 
     if(PYRO_OK!=_can_drv->send_msg(_can_id, data.data()))
     {
+        PYRO_DRV_LOGW("DM", "send torque failed, can=0x%03lX",
+                      static_cast<unsigned long>(_can_id));
         return PYRO_ERROR;
     }
     return PYRO_OK;

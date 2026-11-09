@@ -21,6 +21,7 @@
 #include "cmsis_os.h"
 #include "dma.h"
 #include "fdcan.h"
+#include "mdma.h"
 #include "octospi.h"
 #include "spi.h"
 #include "tim.h"
@@ -30,6 +31,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <string.h>  /* 使用 memcpy 需要此头文件 */
+#include "log.h"     /* 日志抽象接口 */
+#include "pyro_hardfault.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -79,6 +82,10 @@ void Relocate_Vector_And_Code_To_RAM(void)
     /* 1. 搬运中断向量表到 DTCM RAM */
     /* H7 的 Flash 默认起始地址为 0x08000000，拷贝完整的 1024 字节 */
     memcpy(dtcm_vector_table, (uint32_t*)0x08000000, sizeof(dtcm_vector_table));
+    #ifdef USE_LOG
+    /* HardFault 是异常号 3，替换为用户自定义入口 */
+    dtcm_vector_table[3] = ((uint32_t)pyro_hardfault_entry) | 1U;
+    #endif
     SCB->VTOR = (uint32_t)dtcm_vector_table; // 将 Cortex-M7 的向量表偏移指向 RAM
 
     /* 2. 搬运高频中断代码从 Flash 到 ITCM RAM */
@@ -106,6 +113,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+  SEGGER_RTT_Init();
   /* 在开启任何硬件外设和中断之前，执行分散加载与向量表重定向！*/
   Relocate_Vector_And_Code_To_RAM();
   /* USER CODE END 1 */
@@ -116,6 +124,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+  LogHandle.Ctrl.Init(); // 初始化 EasyLogger
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -128,6 +137,7 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_DMA_Init();
+  MX_MDMA_Init();
   MX_USART1_UART_Init();
   MX_FDCAN1_Init();
   MX_FDCAN2_Init();

@@ -1,6 +1,7 @@
 #include "pyro_ins.h"
 #include "pyro_dwt_drv.h"
 #include "QuaternionEKF.h"
+#include "pyro_drv_log.h"
 using namespace pyro;
 
 #define X            0
@@ -71,24 +72,33 @@ status_t ins_drv_t::init(const ins_config_t &config)
     bmi_cfg.gz_offset = _config.gz_offset;
     bmi_cfg.g_norm = _config.g_norm;
 
-    for (uint16_t count = 0; BMI088_init(&hspi2, &bmi_cfg,
-                                         &imu_data) != BMI088_NO_ERROR &&
-                             count < 10;
-         count++)
+    uint8_t bmi_status = BMI088_NO_ERROR;
+    for (uint16_t count = 0; count < 11; ++count)
     {
-        if (count >= 255)
+        bmi_status = BMI088_init(&hspi2, &bmi_cfg, &imu_data);
+        if (bmi_status == BMI088_NO_ERROR)
         {
-            return PYRO_ERROR;
+            break;
         }
+    }
+
+    if (bmi_status != BMI088_NO_ERROR)
+    {
+        PYRO_DRV_LOGW("INS", "BMI088 init failed, err=0x%02X",
+                      static_cast<unsigned>(bmi_status));
     }
 
     if (_ins_task_handle == nullptr)
     {
-        xTaskCreate(_static_ins_task, "ins_task", 512, this, 2,
-                    &_ins_task_handle);
+        if (xTaskCreate(_static_ins_task, "ins_task", 512, this, 2,
+                        &_ins_task_handle) != pdPASS)
+        {
+            PYRO_DRV_LOGW("INS", "create ins task failed");
+        }
     }
     else
     {
+        PYRO_DRV_LOGW("INS", "already initialized");
         return PYRO_ERROR;
     }
     if (_config.calibrate)

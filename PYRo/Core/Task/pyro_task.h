@@ -10,7 +10,10 @@
 #include "FreeRTOS.h"
 #include "pyro_core_def.h"
 #include "task.h"
+#include "pyro_core_config.h"
+#ifdef UES_LOG
 #include "semphr.h"
+#endif
 #include <cstdint>
 
 namespace pyro
@@ -60,14 +63,15 @@ class task_base_t
     void stop();
 
     //==================== 新增：任务监控与控制接口 ====================
+#ifdef UES_LOG
     /**
-     * @brief Suspend this task(封装vTaskSuspend，增加日志打点)
+     * @brief Suspend this task(封装vTaskSuspend)
      * @note 禁止直接调用FreeRTOS原生vTaskSuspend/vTaskResume，否则丢失监控事件
      */
     void suspend();
 
     /**
-     * @brief Resume this task(封装vTaskResume，增加日志打点)
+     * @brief Resume this task(封装vTaskResume)
      */
     void resume();
 
@@ -95,6 +99,7 @@ class task_base_t
      * @note 在创建任何pyro任务之前调用一次
      */
     static void monitor_init();
+#endif
 
   protected:
     /** @brief Initialization callback. 初始化回调。 */
@@ -121,6 +126,7 @@ class task_base_t
     static UBaseType_t convert_priority(priority_t p);
 
     //==================== 静态全局监控相关变量 ====================
+#ifdef UES_LOG
     static SemaphoreHandle_t _monitor_mutex;          ///< 监控表访问互斥锁，保护多任务并发读写监控表
     static constexpr size_t MONITOR_MAX_TASK = 16U;    ///< 支持最大监控任务数量，根据项目实际任务数调整
     static task_monitor_item_t _monitor_table[MONITOR_MAX_TASK]; ///< 任务监控总表
@@ -137,10 +143,13 @@ class task_base_t
      * @note 任务销毁/停止时调用；内部会拿互斥锁
      */
     void unregister_monitor();
+#endif
 };
 
 // 打印任务运行信息函数声明
-extern"C" void sys_monitor_start(void);
+#ifdef UES_LOG
+extern "C" BaseType_t sys_monitor_start(void);
+#endif
 
 } // namespace pyro
 #endif

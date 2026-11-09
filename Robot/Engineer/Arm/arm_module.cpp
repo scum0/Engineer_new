@@ -38,7 +38,7 @@ void module_base_t<arm_module_t, arm_module_params_t>::_update_command()
 }
 
 arm_module_t::arm_module_t() :
-        module_base_t<arm_module_t, arm_module_params_t>("arm", 1024, 512)
+        module_base_t<arm_module_t, arm_module_params_t>("arm_execution", 1024, 512)
 {
     _ctx = {};
 }
@@ -79,10 +79,10 @@ void arm_module_t::_fsm_execute()
     else
     {
         // 发送控制帧才能读到反馈
-        for (int i=0 ; i<AXIS_NUM ; i++)
-            _ctx.axis[i]->_motor->send_torque(0.0f);
+        // for (int i=0 ; i<AXIS_NUM ; i++)
+        //     _ctx.axis[i]->_motor->send_torque(0.0f);
 
-        _ctx.end_gripper->_motor->send_torque(0.0f);
+        // _ctx.end_gripper->_motor->send_torque(0.0f);
     }
 }
 

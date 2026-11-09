@@ -12,6 +12,7 @@
 #include "pyro_core_config.h"
 #include "pyro_core_dma_heap.h"
 #include "pyro_crc.h"
+#include "pyro_drv_log.h"
 #include <cstring>
 
 namespace pyro
@@ -28,6 +29,7 @@ status_t supercap_drv_t::supercap_task_t::init()
         _owner->init_impl();
         return PYRO_OK;
     }
+    PYRO_DRV_LOGW("SUPERCAP", "task init failed: owner is null");
     return PYRO_ERROR;
 }
 
@@ -64,6 +66,10 @@ supercap_drv_t::supercap_drv_t(uart_drv_t *uart_handle)
     if (_tx_buffer)
     {
         memset(_tx_buffer, 0, buf_size);
+    }
+    else
+    {
+        PYRO_DRV_LOGW("SUPERCAP", "tx dma buffer allocation failed");
     }
 
     // 2. Instantiate the internal task (it is NOT started yet)
@@ -108,6 +114,10 @@ void supercap_drv_t::start_rx() const
     {
         _task->start();
     }
+    else
+    {
+        PYRO_DRV_LOGW("SUPERCAP", "start_rx rejected: resource not ready");
+    }
 }
 
 /* Logic Implementation (Private) --------------------------------------------*/
@@ -122,7 +132,10 @@ void supercap_drv_t::init_impl()
     }
 
     if (_rx_msg_buf == nullptr)
+    {
+        PYRO_DRV_LOGW("SUPERCAP", "create message buffer failed");
         return;
+    }
 
     // 2. Register RX ISR Callback
     // We use a lambda to bridge to the member function
@@ -164,6 +177,7 @@ void supercap_drv_t::run_loop_impl()
             {
                 // Timeout -> Offline
                 _is_online = false;
+                PYRO_DRV_LOGW("SUPERCAP", "feedback lost");
             }
         }
     }
@@ -217,7 +231,10 @@ void supercap_drv_t::unpack(const rx_packet_t *buf)
 status_t supercap_drv_t::send_cmd(const chassis_cmd_t &cmd) const
 {
     if (!_tx_buffer || !_uart_drv)
+    {
+        PYRO_DRV_LOGW("SUPERCAP", "send rejected: resource not ready");
         return PYRO_ERROR;
+    }
 
     // 1. Fill Header
     _tx_buffer->header.sof = FRAME_SOF;
@@ -234,8 +251,14 @@ status_t supercap_drv_t::send_cmd(const chassis_cmd_t &cmd) const
     _tx_buffer->end_byte = '\n';
 
     // 4. DMA Write
-    return _uart_drv->write(reinterpret_cast<uint8_t *>(_tx_buffer),
-                            sizeof(tx_packet_t));
+    const status_t ret = _uart_drv->write(
+        reinterpret_cast<uint8_t *>(_tx_buffer), sizeof(tx_packet_t));
+    if (ret != PYRO_OK)
+    {
+        PYRO_DRV_LOGW("SUPERCAP", "send cmd failed, ret=%d",
+                      static_cast<int>(ret));
+    }
+    return ret;
 }
 
 /* Getters -------------------------------------------------------------------*/

@@ -21,16 +21,20 @@ constexpr uint32_t EVENT_BIT_TURN_GRIPPER         = (1 << 3);
 void deps_init();
 
 // 状态机任务的句柄，供遥控器任务做挂起/恢复判断
-static TaskHandle_t s_fsm_task_handle = nullptr;
+static TaskHandle_t fsm_task_handle = nullptr;
 
 // ==================== 遥控器事件处理任务 ====================
 arm_rc_task_t::arm_rc_task_t()
-    : task_base_t("arm_rc_task", 256, 256, priority_t::BELOW_NORMAL)
+    : task_base_t("arm_rc_task", 512, 256, priority_t::NORMAL)
 {
 }
 
 status_t arm_rc_task_t::init()
 {
+    arm_cmd_ptr = new arm_cmd_t();
+    deps_init();
+    arm_module_t::instance()->configure(*arm_deps);
+    arm_module_t::instance()->start();
     return PYRO_OK;
 }
 
@@ -57,27 +61,27 @@ void arm_rc_task_t::run_loop()
         // 检测按键 R 触发
         if (notify_val & EVENT_BIT_RESET)
         {
-            if (s_fsm_task_handle != nullptr &&
-                eTaskGetState(s_fsm_task_handle) == eSuspended)
-                vTaskResume(s_fsm_task_handle);
+            if (fsm_task_handle != nullptr &&
+                eTaskGetState(fsm_task_handle) == eSuspended)
+                vTaskResume(fsm_task_handle);
 
             main_fsm.change_state(&main_fsm.idle_state);
         }
         // 检测按键 B 触发
         if (notify_val & EVENT_BIT_NORMAL)
         {
-            if (s_fsm_task_handle != nullptr &&
-                eTaskGetState(s_fsm_task_handle) == eSuspended)
-                vTaskResume(s_fsm_task_handle);
+            if (fsm_task_handle != nullptr &&
+                eTaskGetState(fsm_task_handle) == eSuspended)
+                vTaskResume(fsm_task_handle);
 
             main_fsm.change_state(&main_fsm.normal_state);
         }
         // 检测按键 X 触发
         if (notify_val & EVENT_BIT_SELF_CTRL)
         {
-            if (s_fsm_task_handle != nullptr &&
-                eTaskGetState(s_fsm_task_handle) == eSuspended)
-                vTaskResume(s_fsm_task_handle);
+            if (fsm_task_handle != nullptr &&
+                eTaskGetState(fsm_task_handle) == eSuspended)
+                vTaskResume(fsm_task_handle);
 
             main_fsm.change_state(&main_fsm.self_ctrl_state);
         }
@@ -92,19 +96,24 @@ void arm_rc_task_t::run_loop()
 
 // ==================== 状态机执行任务 ====================
 fsm_task_t::fsm_task_t()
-    : task_base_t("fsm_task", 512, 512, priority_t::HIGH)
+    : task_base_t("fsm_task", 512, 256, priority_t::HIGH)
 {
 }
 
 status_t fsm_task_t::init()
 {
+    fsm_ctx_ptr = new fsm_ctx_t();
+
+    // 设置FSM初始状态：idle_state
+    main_fsm.change_state(&main_fsm.idle_state);
+
     return PYRO_OK;
 }
 
 void fsm_task_t::run_loop()
 {
     // 记录自身句柄，供遥控器任务做挂起/恢复判断
-    s_fsm_task_handle = xTaskGetCurrentTaskHandle();
+    fsm_task_handle = xTaskGetCurrentTaskHandle();
 
     for (;;)
     {
@@ -125,60 +134,6 @@ arm_rc_task_t &arm_rc_task()
 fsm_task_t &fsm_task()
 {
     static fsm_task_t instance;
-    return instance;
-}
-
-// ==================== 机械臂初始化任务 ====================
-arm_init_task_t::arm_init_task_t()
-    : task_base_t("arm_init_task", 512, 512, priority_t::REALTIME)
-{
-}
-
-status_t arm_init_task_t::init()
-{
-    return PYRO_OK;
-}
-
-void arm_init_task_t::run_loop()
-{
-    arm_cmd_ptr = new arm_cmd_t();
-    deps_init();
-    arm_module_t::instance()->configure(*arm_deps);
-
-    arm_module_t::instance()->start();
-    arm_rc_task().start();
-}
-
-// ==================== 状态机初始化任务 ====================
-fsm_init_task_t::fsm_init_task_t()
-    : task_base_t("fsm_init_task", 512, 512, priority_t::REALTIME)
-{
-}
-
-status_t fsm_init_task_t::init()
-{
-    return PYRO_OK;
-}
-
-void fsm_init_task_t::run_loop()
-{
-    fsm_ctx_ptr = new fsm_ctx_t();
-
-    // 设置FSM初始状态：idle_state
-    main_fsm.change_state(&main_fsm.idle_state);
-
-    fsm_task().start();
-}
-
-arm_init_task_t &arm_init_task()
-{
-    static arm_init_task_t instance;
-    return instance;
-}
-
-fsm_init_task_t &fsm_init_task()
-{
-    static fsm_init_task_t instance;
     return instance;
 }
 

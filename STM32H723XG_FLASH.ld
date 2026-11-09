@@ -249,6 +249,25 @@ SECTIONS
   PROVIDE( __bss_start = __tbss_start );
   PROVIDE( __bss_size = __bss_end - __bss_start );
 
+/* RTT 专门段，放到 RAM_D1(AXI‑SRAM) */
+  .rtt_d1 : ALIGN(8)
+  {
+    *(.rtt_d1*)
+  } > RAM_D1
+
+  /*
+   * 崩溃日志段：复位不清零（NOLOAD，且不在 _sbss.._ebss 范围内）。
+   * HardFault 时把日志环形缓冲 + 现场写入此处，复位后由应用层落盘到 Flash。
+   * 放在 RAM_D3（16K，DMA 不涉及，CPU 可访问）。
+   */
+  .noinit (NOLOAD) : ALIGN(8)
+  {
+    . = ALIGN(8);
+    KEEP(*(.noinit))
+    . = ALIGN(8);
+  } > RAM_D3
+
+
   /* User_heap_stack section, used to check that there is enough RAM left */
   ._user_heap_stack (NOLOAD) :
   {

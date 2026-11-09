@@ -10,6 +10,7 @@
 
 #include "pyro_bsp_uart.h"
 #include "usart.h"
+#include "pyro_drv_log.h"
 
 namespace pyro
 {
@@ -47,10 +48,14 @@ void bsp_uart::init_all()
 {
     // Calling get_uartX() triggers the first-time construction of the instance.
     // 调用 get_uartX() 将触发实例的首次构造。
-    get_uart1().enable_rx_dma();
-    get_uart5().enable_rx_dma();
-    get_uart7().enable_rx_dma();
-    get_uart10().enable_rx_dma();
+    if (get_uart1().enable_rx_dma() != PYRO_OK)
+        PYRO_DRV_LOGW("UART", "uart1 enable rx dma failed");
+    if (get_uart5().enable_rx_dma() != PYRO_OK)
+        PYRO_DRV_LOGW("UART", "uart5 enable rx dma failed");
+    if (get_uart7().enable_rx_dma() != PYRO_OK)
+        PYRO_DRV_LOGW("UART", "uart7 enable rx dma failed");
+    if (get_uart10().enable_rx_dma() != PYRO_OK)
+        PYRO_DRV_LOGW("UART", "uart10 enable rx dma failed");
 }
 
 } // namespace pyro

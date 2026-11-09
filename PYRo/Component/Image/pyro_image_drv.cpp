@@ -10,6 +10,7 @@
 #include "pyro_crc.h"
 #include "pyro_dwt_drv.h"
 #include "pyro_core_dma_heap.h"
+#include "pyro_drv_log.h"
 #include <cstring>
 
 namespace pyro
@@ -32,6 +33,11 @@ image_drv_t::image_drv_t(uart_drv_t *uart_handle)
 
     _tx_controller_pkt = static_cast<tx_controller_packet_t *>(pvPortDmaMalloc(sizeof(tx_controller_packet_t)));
     _tx_client_pkt     = static_cast<tx_client_packet_t *>(pvPortDmaMalloc(sizeof(tx_client_packet_t)));
+
+    if (_rx_msg_buf == nullptr)
+        PYRO_DRV_LOGW("IMAGE", "create message buffer failed");
+    if (_tx_controller_pkt == nullptr || _tx_client_pkt == nullptr)
+        PYRO_DRV_LOGW("IMAGE", "tx dma buffer allocation failed");
 
     if (_tx_controller_pkt) memset(_tx_controller_pkt, 0, sizeof(tx_controller_packet_t));
     if (_tx_client_pkt)     memset(_tx_client_pkt, 0, sizeof(tx_client_packet_t));
@@ -59,7 +65,11 @@ image_drv_t::~image_drv_t()
 
 void image_drv_t::init(std::initializer_list<cmd_id> listening_ids)
 {
-    if (!_uart) return;
+    if (!_uart)
+    {
+        PYRO_DRV_LOGW("IMAGE", "init failed: uart is null");
+        return;
+    }
 
     _subscribed_count = 0;
     for (auto id : listening_ids)
@@ -85,7 +95,13 @@ void image_drv_t::init()
 void image_drv_t::start() const
 {
     if (_task && _tx_controller_pkt && _tx_client_pkt)
+    {
         _task->start();
+    }
+    else
+    {
+        PYRO_DRV_LOGW("IMAGE", "start rejected: resource not ready");
+    }
 }
 
 /**
@@ -142,6 +158,10 @@ void image_drv_t::task_loop()
 
         if (dwt_drv_t::get_timeline_ms() - _last_update_time > 500.0f)
         {
+            if (_is_online)
+            {
+                PYRO_DRV_LOGW("IMAGE", "link lost");
+            }
             _is_online = false;
         }
     }
@@ -188,6 +208,8 @@ status_t image_drv_t::send_controller_data()
     if (ret != PYRO_OK)
     {
         _send_seq--;
+        PYRO_DRV_LOGW("IMAGE", "send controller data failed, ret=%d",
+                      static_cast<int>(ret));
     }
 
     return ret;
@@ -213,6 +235,8 @@ status_t image_drv_t::send_client_data()
     if (ret != PYRO_OK)
     {
         _send_seq--;
+        PYRO_DRV_LOGW("IMAGE", "send client data failed, ret=%d",
+                      static_cast<int>(ret));
     }
     return ret;
 }

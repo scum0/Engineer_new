@@ -8,6 +8,7 @@
 #include "pyro_bsp_uart.h"
 #include "pyro_crc.h"
 #include "pyro_dwt_drv.h"
+#include "pyro_drv_log.h"
 
 #include "pyro_core_dma_heap.h"
 #include <cstring> // for memcpy, strlen
@@ -37,6 +38,10 @@ void referee_drv_t::referee_task::run_loop()
             if (dwt_drv_t::get_timeline_ms() - _parent->_last_update_time >
                 2000)
             {
+                if (_parent->_is_online)
+                {
+                    PYRO_DRV_LOGW("REFEREE", "feedback lost");
+                }
                 _parent->_is_online = false;
             }
         }
@@ -82,7 +87,10 @@ referee_drv_t::referee_drv_t(uart_drv_t *uart_handle)
 void referee_drv_t::init(const std::initializer_list<cmd_id> listening_ids)
 {
     if (!_uart)
+    {
+        PYRO_DRV_LOGW("REFEREE", "init failed: uart is null");
         return;
+    }
 
     _enabled_ids.reset();
     for (auto id : listening_ids)
@@ -106,13 +114,18 @@ void referee_drv_t::init(const std::initializer_list<cmd_id> listening_ids)
         { xSemaphoreGiveFromISR(this->_tx_cplt_sem, &woken); });
 
     if (_task)
+    {
         _task->start();
+    }
 }
 
 void referee_drv_t::init()
 {
     if (!_uart)
+    {
+        PYRO_DRV_LOGW("REFEREE", "init failed: uart is null");
         return;
+    }
 
     _enabled_ids.set(); // Enable all
 
@@ -128,7 +141,9 @@ void referee_drv_t::init()
         { xSemaphoreGiveFromISR(this->_tx_cplt_sem, &woken); });
 
     if (_task)
+    {
         _task->start();
+    }
 }
 
 // ==========================================================================
@@ -147,12 +162,19 @@ bool referee_drv_t::send_packet(cmd_id cmd_id_val, const void *data,
     const uint16_t frame_total_len = HEADER_CMDID_LEN + len + CRC16_SIZE;
 
     if (frame_total_len > MAX_TX_FRAME_LEN || !_uart)
+    {
+        PYRO_DRV_LOGW("REFEREE", "send rejected, frame_len=%u",
+                      static_cast<unsigned>(frame_total_len));
         return false;
+    }
 
     // 获取互斥锁，确保多线程调用组包发送互不干扰
     const scoped_mutex_t lock(_tx_mutex, pdMS_TO_TICKS(100));
     if (!lock.is_locked())
+    {
+        PYRO_DRV_LOGW("REFEREE", "send rejected: tx mutex timeout");
         return false;
+    }
 
     // 【关键优化：CPU与DMA并行】
     // 1. 获取一个尚未被 DMA 占用的后台缓冲区
@@ -187,6 +209,7 @@ bool referee_drv_t::send_packet(cmd_id cmd_id_val, const void *data,
     // Give 释放。
     if (xSemaphoreTake(_tx_cplt_sem, pdMS_TO_TICKS(50)) != pdTRUE)
     {
+        PYRO_DRV_LOGW("REFEREE", "send rejected: dma busy timeout");
         return false;
     }
 
@@ -196,6 +219,8 @@ bool referee_drv_t::send_packet(cmd_id cmd_id_val, const void *data,
     {
         // 遇到极端的底层错误被拒发，归还信号量以免死锁
         xSemaphoreGive(_tx_cplt_sem);
+        PYRO_DRV_LOGW("REFEREE", "uart dma write failed, len=%u",
+                      static_cast<unsigned>(frame_total_len));
         return false;
     }
 

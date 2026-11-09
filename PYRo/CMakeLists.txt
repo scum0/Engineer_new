@@ -5,6 +5,12 @@ cmake_minimum_required(VERSION 3.22)
 # ==============================================================================
 # 子模块直接继承上级配置，只需声明库目标
 add_library(PYRo OBJECT)
+
+# 驱动日志开关：cmake -DUES_LOG=ON 时向编译器定义 UES_LOG，默认关闭。
+if (UES_LOG)
+    target_compile_definitions(PYRo PUBLIC UES_LOG)
+endif ()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD 17)
@@ -72,7 +78,6 @@ target_sources(PYRo PRIVATE
         Component/SR/pyro_sr04_drv.cpp
         Component/SR/pyro_sr05_drv.cpp
         Component/SR/pyro_us100_drv.cpp
-        Component/WS2812/pyro_ws2812_drv.cpp
         Component/Flash/pyro_flash_fs.cpp
 
         # --- Debug ---
@@ -150,7 +155,6 @@ target_include_directories(PYRo PUBLIC
         Component/Supercap
         Component/SR
         Component/Image
-        Component/WS2812
         Component/Flash
 
         # --- Module ---
